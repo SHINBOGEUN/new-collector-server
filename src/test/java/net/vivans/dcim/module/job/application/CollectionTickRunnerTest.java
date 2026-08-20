@@ -1,5 +1,6 @@
 package net.vivans.dcim.module.job.application;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
@@ -30,7 +31,12 @@ class CollectionTickRunnerTest {
         };
         AtomicInteger published = new AtomicInteger();
         MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> published.incrementAndGet();
-        CollectionTickRunner runner = new CollectionTickRunner(snmp, mqtt, new OidTemplateResolver());
+        CollectionTickRunner runner = new CollectionTickRunner(
+                snmp,
+                mqtt,
+                new OidTemplateResolver(),
+                new CollectionMetrics(new SimpleMeterRegistry())
+        );
 
         CollectionGroupSpec spec = spec(
                 List.of(
@@ -62,7 +68,12 @@ class CollectionTickRunnerTest {
         };
         AtomicInteger published = new AtomicInteger();
         MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> published.incrementAndGet();
-        CollectionTickRunner runner = new CollectionTickRunner(snmp, mqtt, new OidTemplateResolver());
+        CollectionTickRunner runner = new CollectionTickRunner(
+                snmp,
+                mqtt,
+                new OidTemplateResolver(),
+                new CollectionMetrics(new SimpleMeterRegistry())
+        );
         CollectionGroupSpec spec = spec(List.of(new CollectionGroupTargetSpec(1, "host", 161, null)));
         AtomicBoolean running = new AtomicBoolean(false);
 

@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Component
@@ -25,6 +26,7 @@ public class CollectionTickRunner {
     private final SnmpQueryClient snmpQueryClient;
     private final MqttPublisher mqttPublisher;
     private final OidTemplateResolver oidTemplateResolver;
+    private final CollectionMetrics collectionMetrics;
     private final ExecutorService executor = Executors.newCachedThreadPool(r -> {
         Thread thread = new Thread(r);
         thread.setName("collector-snmp-" + thread.getId());
@@ -35,11 +37,13 @@ public class CollectionTickRunner {
     public CollectionTickRunner(
             SnmpQueryClient snmpQueryClient,
             MqttPublisher mqttPublisher,
-            OidTemplateResolver oidTemplateResolver
+            OidTemplateResolver oidTemplateResolver,
+            CollectionMetrics collectionMetrics
     ) {
         this.snmpQueryClient = snmpQueryClient;
         this.mqttPublisher = mqttPublisher;
         this.oidTemplateResolver = oidTemplateResolver;
+        this.collectionMetrics = collectionMetrics;
     }
 
     public void run(CollectionGroupSpec spec, AtomicBoolean running) {
@@ -68,14 +72,21 @@ public class CollectionTickRunner {
         int concurrency = Math.max(spec.maxConcurrency(), 1);
         Semaphore semaphore = new Semaphore(concurrency);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        AtomicInteger successCount = new AtomicInteger();
+        AtomicInteger failureCount = new AtomicInteger();
 
         for (CollectionGroupTargetSpec target : targets) {
             futures.add(CompletableFuture.runAsync(() -> {
                 try {
                     semaphore.acquire();
-                    collectTarget(spec, target);
+                    if (collectTarget(spec, target)) {
+                        successCount.incrementAndGet();
+                    } else {
+                        failureCount.incrementAndGet();
+                    }
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
+                    failureCount.incrementAndGet();
                 } finally {
                     semaphore.release();
                 }
@@ -86,11 +97,18 @@ public class CollectionTickRunner {
             CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
                     .get(Math.max(spec.timeoutMs(), 1) * 4L * targets.size(), TimeUnit.MILLISECONDS);
         } catch (Exception ex) {
-            log.warn("그룹 tick 대기 중 오류 groupId={}: {}", spec.groupId(), ex.getMessage());
+            log.warn(
+                    "그룹 tick 대기 중 오류 taskId={} groupId={}: {}",
+                    spec.taskId(),
+                    spec.groupId(),
+                    ex.getMessage()
+            );
         }
+
+        logTickSummary(spec, targets.size(), successCount.get(), failureCount.get());
     }
 
-    private void collectTarget(CollectionGroupSpec spec, CollectionGroupTargetSpec target) {
+    private boolean collectTarget(CollectionGroupSpec spec, CollectionGroupTargetSpec target) {
         try {
             List<SnmpQueryClient.OidQuery> queries = new ArrayList<>();
             for (CollectionGroupOidSpec oid : spec.oids() == null ? List.<CollectionGroupOidSpec>of() : spec.oids()) {
@@ -105,8 +123,43 @@ public class CollectionTickRunner {
                     queries
             );
             mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), values);
+            collectionMetrics.recordSuccess();
+            return true;
         } catch (Exception ex) {
-            log.warn("장비 수집 실패 deviceId={} host={}: {}", target.deviceId(), target.host(), ex.getMessage());
+            collectionMetrics.recordFailure();
+            log.warn(
+                    "수집 실패 taskId={} groupId={} deviceId={} host={}:{} reason={}",
+                    spec.taskId(),
+                    spec.groupId(),
+                    target.deviceId(),
+                    target.host(),
+                    target.port(),
+                    ex.getMessage()
+            );
+            return false;
         }
+    }
+
+    private void logTickSummary(CollectionGroupSpec spec, int total, int success, int failed) {
+        CollectionTickSummary summary = new CollectionTickSummary(total, success, failed);
+        if (failed > 0) {
+            log.warn(
+                    "수집 tick 요약 taskId={} groupId={} total={} success={} failed={}",
+                    spec.taskId(),
+                    spec.groupId(),
+                    summary.total(),
+                    summary.success(),
+                    summary.failed()
+            );
+            return;
+        }
+        log.info(
+                "수집 tick 요약 taskId={} groupId={} total={} success={} failed={}",
+                spec.taskId(),
+                spec.groupId(),
+                summary.total(),
+                summary.success(),
+                summary.failed()
+        );
     }
 }

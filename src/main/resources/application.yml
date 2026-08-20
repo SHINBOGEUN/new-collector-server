@@ -32,6 +32,12 @@ security:
   auth-enabled: true
   api-key: ${COLLECTOR_API_KEY:manager-server}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+
 collector:
   mqtt:
     enabled: ${MQTT_ENABLED:true}

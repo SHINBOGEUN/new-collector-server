@@ -83,13 +83,7 @@ public class PahoMqttPublisher implements MqttPublisher {
                 log.warn("MQTT 미연결, device:{} 값을 건너뜁니다.", deviceId);
                 return;
             }
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("type", "sensor");
-            payload.put("datetime", LocalDateTime.now().format(DATETIME));
-            payload.put("taskId", taskId);
-            payload.put("groupId", groupId);
-            payload.put("data", Map.of("device:" + deviceId, values));
-            byte[] body = objectMapper.writeValueAsBytes(payload);
+            byte[] body = objectMapper.writeValueAsBytes(buildPayload(deviceId, values, LocalDateTime.now()));
             MqttMessage message = new MqttMessage(body);
             message.setQos(0);
             message.setRetained(false);
@@ -98,6 +92,14 @@ public class PahoMqttPublisher implements MqttPublisher {
         } catch (Exception ex) {
             log.warn("MQTT publish 실패 device:{}: {}", deviceId, ex.getMessage());
         }
+    }
+
+    static Map<String, Object> buildPayload(int deviceId, Map<String, Object> values, LocalDateTime collectedAt) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("datetime", collectedAt.format(DATETIME));
+        payload.put("data", Map.of(String.valueOf(deviceId), values));
+        payload.put("type", "schedule");
+        return payload;
     }
 
     private void ensureConnected() {

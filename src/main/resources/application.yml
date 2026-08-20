@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: new-collector-server
+
+server:
+  port: 8081
+
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: alpha
+    tags-sorter: alpha
+    try-it-out-enabled: true
+    filter: true
+    display-request-duration: true
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    net.vivans.dcim: DEBUG
+  file:
+    name: ${LOG_FILE_NAME:./logs/application.log}
+
+app:
+  version: 1.0.0
+
+security:
+  auth-enabled: true
+  api-key: ${COLLECTOR_API_KEY:manager-server}
+
+collector:
+  mqtt:
+    enabled: ${MQTT_ENABLED:true}
+    broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+    client-id: ${MQTT_CLIENT_ID:new-collector-server}
+    topic: ${MQTT_TOPIC:dcim/sensor/data}
+    username: ${MQTT_USERNAME:}
+    password: ${MQTT_PASSWORD:}

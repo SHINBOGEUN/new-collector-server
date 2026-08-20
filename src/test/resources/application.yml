@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: new-collector-server-test
+  profiles:
+    active: test
+
+server:
+  port: 0
+
+security:
+  auth-enabled: true
+  api-key: test-manager-key
+
+collector:
+  mqtt:
+    enabled: false
+    broker-url: tcp://127.0.0.1:1883
+    client-id: test-collector
+    topic: dcim/sensor/data
+
+app:
+  version: 1.0.0-test

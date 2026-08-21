@@ -4,11 +4,14 @@ import lombok.extern.slf4j.Slf4j;
 import net.vivans.dcim.module.job.api.dto.JobResponse;
 import net.vivans.dcim.module.job.api.dto.JobToggleRequest;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,10 +26,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Service
 public class JobService {
 
+    public static final String LIVE_JOB_ID = "live";
+
     private final ThreadPoolTaskScheduler scheduler;
     private final CollectionTickRunner tickRunner;
     private final Map<String, RegisteredJob> jobs = new ConcurrentHashMap<>();
     private final Map<Integer, String> jobIdByGroupId = new ConcurrentHashMap<>();
+    private final AtomicBoolean liveRunning = new AtomicBoolean(false);
+    private final Object liveLock = new Object();
+    private volatile LiveCollectionSpec liveSpec;
+    private volatile ScheduledFuture<?> liveFuture;
 
     public JobService(
             @Qualifier("collectorTaskScheduler") ThreadPoolTaskScheduler scheduler,
@@ -87,6 +96,34 @@ public class JobService {
         return toResponse(job);
     }
 
+    public JobResponse upsertLive(LiveCollectionSpec spec) {
+        validateLive(spec);
+        synchronized (liveLock) {
+            cancelLive();
+            liveSpec = spec;
+            scheduleLive();
+        }
+        log.info("live job 등록 targetCount={}", spec.targets() == null ? 0 : spec.targets().size());
+        return liveResponse();
+    }
+
+    public void deleteLive() {
+        synchronized (liveLock) {
+            cancelLive();
+            liveSpec = null;
+        }
+        log.info("live job 삭제");
+    }
+
+    public JobResponse getLive() {
+        synchronized (liveLock) {
+            if (liveSpec == null) {
+                throw new NoSuchElementException("live job이 없습니다.");
+            }
+            return liveResponse();
+        }
+    }
+
     public List<JobResponse> list() {
         List<JobResponse> responses = new ArrayList<>();
         for (RegisteredJob job : jobs.values()) {
@@ -96,7 +133,8 @@ public class JobService {
     }
 
     public int count() {
-        return jobs.size();
+        int live = liveSpec == null ? 0 : 1;
+        return jobs.size() + live;
     }
 
     private void schedule(RegisteredJob job) {
@@ -106,6 +144,28 @@ public class JobService {
                 trigger
         );
         job.setFuture(future);
+    }
+
+    private void scheduleLive() {
+        LiveCollectionSpec spec = liveSpec;
+        if (spec == null) {
+            return;
+        }
+        long intervalMs = Math.max(1L, spec.intervalMs());
+        ScheduledFuture<?> future = scheduler.scheduleAtFixedRate(
+                () -> tickRunner.runLive(liveSpec, liveRunning),
+                Instant.now(),
+                Duration.ofMillis(intervalMs)
+        );
+        liveFuture = future;
+    }
+
+    private void cancelLive() {
+        ScheduledFuture<?> future = liveFuture;
+        if (future != null) {
+            future.cancel(false);
+            liveFuture = null;
+        }
     }
 
     private void cancel(RegisteredJob job) {
@@ -139,6 +199,32 @@ public class JobService {
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("cronExpression이 올바르지 않습니다: " + spec.cronExpression());
         }
+    }
+
+    private void validateLive(LiveCollectionSpec spec) {
+        if (spec == null) {
+            throw new IllegalArgumentException("spec이 필요합니다.");
+        }
+        if (spec.protocol() == null || spec.protocol().isBlank()) {
+            throw new IllegalArgumentException("protocol이 필요합니다.");
+        }
+        if (spec.targets() == null || spec.targets().isEmpty()) {
+            throw new IllegalArgumentException("targets가 필요합니다.");
+        }
+    }
+
+    private JobResponse liveResponse() {
+        LiveCollectionSpec spec = liveSpec;
+        return new JobResponse(
+                LIVE_JOB_ID,
+                null,
+                null,
+                null,
+                spec == null ? null : spec.protocol(),
+                null,
+                spec != null,
+                spec == null || spec.targets() == null ? 0 : spec.targets().size()
+        );
     }
 
     private JobResponse toResponse(RegisteredJob job) {

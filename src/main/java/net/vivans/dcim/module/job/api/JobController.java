@@ -9,6 +9,7 @@ import net.vivans.dcim.module.job.api.dto.JobResponse;
 import net.vivans.dcim.module.job.api.dto.JobToggleRequest;
 import net.vivans.dcim.module.job.application.JobService;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import net.vivans.dcim.shared.api.ApiResponse;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +31,25 @@ import java.util.Map;
 public class JobController {
 
     private final JobService jobService;
+
+    @PutMapping("/jobs/live")
+    @Operation(summary = "실시간 1초 수집 job을 등록하거나 교체한다.")
+    public ApiResponse<JobResponse> upsertLive(@RequestBody LiveCollectionSpec spec) {
+        return ApiResponse.ok(jobService.upsertLive(spec));
+    }
+
+    @DeleteMapping("/jobs/live")
+    @Operation(summary = "실시간 수집 job을 중지한다.")
+    public ApiResponse<Void> deleteLive() {
+        jobService.deleteLive();
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/jobs/live")
+    @Operation(summary = "실시간 수집 job 상태")
+    public ApiResponse<JobResponse> getLive() {
+        return ApiResponse.ok(jobService.getLive());
+    }
 
     @PostMapping("/jobs/register")
     @Operation(summary = "수집 그룹 spec을 메모리 job으로 등록한다. 같은 groupId면 갱신한다.")

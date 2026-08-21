@@ -29,4 +29,25 @@ class MqttPayloadFormatTest {
         assertThat(json).doesNotContain("taskId");
         assertThat(json).doesNotContain("groupId");
     }
+
+    @Test
+    void livePayloadIsOnePointPerMessage() throws Exception {
+        var payload = PahoMqttPublisher.buildLivePayload(
+                9,
+                "PDU-1P-114",
+                "W",
+                "W",
+                519,
+                LocalDateTime.of(2026, 8, 21, 14, 40, 0)
+        );
+
+        assertThat(payload.get("type")).isEqualTo("realtime");
+        assertThat(payload.get("deviceId")).isEqualTo(9);
+        assertThat(payload.get("pointName")).isEqualTo("W");
+        assertThat(payload.get("unit")).isEqualTo("W");
+        assertThat(payload.get("value")).isEqualTo(519);
+        assertThat(payload.get("displayName")).isEqualTo("PDU-1P-114");
+        assertThat(payload.get("datetime")).isEqualTo("2026-08-21 14:40:00");
+        assertThat(payload).doesNotContainKey("data");
+    }
 }

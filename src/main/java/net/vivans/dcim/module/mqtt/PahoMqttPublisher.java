@@ -42,6 +42,9 @@ public class PahoMqttPublisher implements MqttPublisher {
     @Value("${collector.mqtt.topic:dcim/sensor/data}")
     private String topic;
 
+    @Value("${collector.mqtt.realtime-topic:dcim/sensor/realtime}")
+    private String realtimeTopic;
+
     @Value("${collector.mqtt.username:}")
     private String username;
 
@@ -94,11 +97,60 @@ public class PahoMqttPublisher implements MqttPublisher {
         }
     }
 
+    @Override
+    public void publishLivePoint(
+            int deviceId,
+            String displayName,
+            String pointName,
+            String unit,
+            Object value
+    ) {
+        if (!enabled) {
+            return;
+        }
+        try {
+            ensureConnected();
+            if (client == null || !client.isConnected()) {
+                log.warn("MQTT 미연결, live device:{} point:{} 값을 건너뜁니다.", deviceId, pointName);
+                return;
+            }
+            byte[] body = objectMapper.writeValueAsBytes(
+                    buildLivePayload(deviceId, displayName, pointName, unit, value, LocalDateTime.now())
+            );
+            MqttMessage message = new MqttMessage(body);
+            message.setQos(0);
+            message.setRetained(false);
+            client.publish(realtimeTopic, message);
+            log.debug("MQTT live publish device:{} point:{} topic={}", deviceId, pointName, realtimeTopic);
+        } catch (Exception ex) {
+            log.warn("MQTT live publish 실패 device:{} point:{}: {}", deviceId, pointName, ex.getMessage());
+        }
+    }
+
     static Map<String, Object> buildPayload(int deviceId, Map<String, Object> values, LocalDateTime collectedAt) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("datetime", collectedAt.format(DATETIME));
         payload.put("data", Map.of(String.valueOf(deviceId), values));
         payload.put("type", "schedule");
+        return payload;
+    }
+
+    static Map<String, Object> buildLivePayload(
+            int deviceId,
+            String displayName,
+            String pointName,
+            String unit,
+            Object value,
+            LocalDateTime collectedAt
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("datetime", collectedAt.format(DATETIME));
+        payload.put("type", "realtime");
+        payload.put("deviceId", deviceId);
+        payload.put("pointName", pointName);
+        payload.put("unit", unit);
+        payload.put("value", value);
+        payload.put("displayName", displayName);
         return payload;
     }
 

@@ -5,6 +5,9 @@ import net.vivans.dcim.bootstrap.CollectorServerApplication;
 import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.LiveCollectionPointSpec;
+import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
+import net.vivans.dcim.module.job.domain.LiveCollectionTargetSpec;
 import net.vivans.dcim.module.snmp.SnmpQueryClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +29,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -111,5 +115,49 @@ class JobControllerIntegrationTest {
                         .header("X-Api-Key", "test-manager-key"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void upsertAndDeleteLiveJob() throws Exception {
+        when(snmpQueryClient.get(anyString(), anyInt(), anyString(), anyInt(), anyInt(), anyList()))
+                .thenReturn(Map.of("W", 519));
+
+        LiveCollectionSpec spec = new LiveCollectionSpec(
+                1000,
+                "snmp",
+                "public",
+                2000,
+                1,
+                10,
+                List.of(new LiveCollectionTargetSpec(
+                        9,
+                        "PDU-1P-114",
+                        "192.168.1.10",
+                        161,
+                        null,
+                        List.of(new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, "W"))
+                ))
+        );
+
+        mockMvc.perform(put("/api/jobs/live")
+                        .header("X-Api-Key", "test-manager-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(spec)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.collectorJobId").value("live"))
+                .andExpect(jsonPath("$.data.targetCount").value(1));
+
+        mockMvc.perform(get("/api/jobs/live")
+                        .header("X-Api-Key", "test-manager-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.collectorJobId").value("live"));
+
+        mockMvc.perform(delete("/api/jobs/live")
+                        .header("X-Api-Key", "test-manager-key"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/jobs/live")
+                        .header("X-Api-Key", "test-manager-key"))
+                .andExpect(status().isNotFound());
     }
 }

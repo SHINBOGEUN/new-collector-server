@@ -4,6 +4,9 @@ import lombok.extern.slf4j.Slf4j;
 import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.LiveCollectionPointSpec;
+import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
+import net.vivans.dcim.module.job.domain.LiveCollectionTargetSpec;
 import net.vivans.dcim.module.mqtt.MqttPublisher;
 import net.vivans.dcim.module.snmp.SnmpQueryClient;
 import org.springframework.stereotype.Component;
@@ -12,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
@@ -33,6 +37,7 @@ public class CollectionTickRunner {
         thread.setDaemon(true);
         return thread;
     });
+    private final ConcurrentHashMap<Integer, AtomicBoolean> liveTargetRunning = new ConcurrentHashMap<>();
 
     public CollectionTickRunner(
             SnmpQueryClient snmpQueryClient,
@@ -56,6 +61,10 @@ public class CollectionTickRunner {
         } finally {
             running.set(false);
         }
+    }
+
+    public void runLive(LiveCollectionSpec spec, AtomicBoolean running) {
+        collectLive(spec);
     }
 
     private void collect(CollectionGroupSpec spec) {
@@ -161,5 +170,110 @@ public class CollectionTickRunner {
                 summary.success(),
                 summary.failed()
         );
+    }
+
+    private void collectLive(LiveCollectionSpec spec) {
+        if (spec.protocol() == null || !"snmp".equalsIgnoreCase(spec.protocol())) {
+            log.debug("SNMP가 아닌 live 프로토콜은 실행하지 않습니다. protocol={}", spec.protocol());
+            return;
+        }
+        List<LiveCollectionTargetSpec> targets = spec.targets() == null ? List.of() : spec.targets();
+        if (targets.isEmpty()) {
+            log.debug("live 수집 대상이 없습니다.");
+            return;
+        }
+
+        int concurrency = Math.max(spec.maxConcurrency(), 1);
+        Semaphore semaphore = new Semaphore(concurrency);
+
+        for (LiveCollectionTargetSpec target : targets) {
+            AtomicBoolean targetRunning = liveTargetRunning.computeIfAbsent(
+                    target.deviceId(),
+                    ignored -> new AtomicBoolean(false)
+            );
+            if (!targetRunning.compareAndSet(false, true)) {
+                continue;
+            }
+            executor.execute(() -> {
+                boolean acquired = false;
+                try {
+                    semaphore.acquire();
+                    acquired = true;
+                    collectLiveTarget(spec, target);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                } catch (Exception ex) {
+                    log.warn(
+                            "live 수집 실패 deviceId={} host={}:{} reason={}",
+                            target.deviceId(),
+                            target.host(),
+                            target.port(),
+                            ex.getMessage()
+                    );
+                } finally {
+                    if (acquired) {
+                        semaphore.release();
+                    }
+                    targetRunning.set(false);
+                }
+            });
+        }
+    }
+
+    private boolean collectLiveTarget(LiveCollectionSpec spec, LiveCollectionTargetSpec target) {
+        try {
+            List<LiveCollectionPointSpec> points = target.points() == null ? List.of() : target.points();
+            if (points.isEmpty()) {
+                return false;
+            }
+            CollectionGroupTargetSpec resolveTarget = new CollectionGroupTargetSpec(
+                    target.deviceId(),
+                    target.host(),
+                    target.port(),
+                    target.instanceId()
+            );
+            List<SnmpQueryClient.OidQuery> queries = new ArrayList<>();
+            for (LiveCollectionPointSpec point : points) {
+                CollectionGroupOidSpec oid = new CollectionGroupOidSpec(
+                        point.name(),
+                        point.template(),
+                        point.requiresInstance()
+                );
+                queries.add(new SnmpQueryClient.OidQuery(point.name(), oidTemplateResolver.resolve(oid, resolveTarget)));
+            }
+            Map<String, Object> values = snmpQueryClient.get(
+                    target.host(),
+                    target.port(),
+                    spec.community(),
+                    spec.timeoutMs(),
+                    spec.retries(),
+                    queries
+            );
+            for (LiveCollectionPointSpec point : points) {
+                Object value = values.get(point.name());
+                if (value == null) {
+                    continue;
+                }
+                mqttPublisher.publishLivePoint(
+                        target.deviceId(),
+                        target.deviceName(),
+                        point.name(),
+                        point.unit(),
+                        value
+                );
+            }
+            collectionMetrics.recordSuccess();
+            return true;
+        } catch (Exception ex) {
+            collectionMetrics.recordFailure();
+            log.warn(
+                    "live 수집 실패 deviceId={} host={}:{} reason={}",
+                    target.deviceId(),
+                    target.host(),
+                    target.port(),
+                    ex.getMessage()
+            );
+            return false;
+        }
     }
 }

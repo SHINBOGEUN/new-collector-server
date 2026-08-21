@@ -44,5 +44,6 @@ collector:
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
     client-id: ${MQTT_CLIENT_ID:new-collector-server}
     topic: ${MQTT_TOPIC:dcim/sensor/data}
+    realtime-topic: ${MQTT_REALTIME_TOPIC:dcim/sensor/realtime}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}

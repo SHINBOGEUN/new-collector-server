@@ -75,7 +75,7 @@ class JobControllerIntegrationTest {
                 2000,
                 1,
                 10,
-                List.of(new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.0", false)),
+                List.of(new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.0", false, null)),
                 List.of(new CollectionGroupTargetSpec(3, "192.168.14.114", 161, null)),
                 List.of()
         );
@@ -135,7 +135,7 @@ class JobControllerIntegrationTest {
                         "192.168.1.10",
                         161,
                         null,
-                        List.of(new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, "W"))
+                        List.of(new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, null, "W"))
                 ))
         );
 

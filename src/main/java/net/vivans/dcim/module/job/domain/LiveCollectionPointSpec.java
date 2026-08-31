@@ -4,6 +4,7 @@ public record LiveCollectionPointSpec(
         String name,
         String template,
         boolean requiresInstance,
+        Double scale,
         String unit
 ) {
 }

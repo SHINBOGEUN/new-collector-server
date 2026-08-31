@@ -131,7 +131,8 @@ public class CollectionTickRunner {
                     spec.retries(),
                     queries
             );
-            mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), values);
+            Map<String, Object> scaled = ScaledValues.apply(values, spec.oids());
+            mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), scaled);
             collectionMetrics.recordSuccess();
             return true;
         } catch (Exception ex) {
@@ -237,7 +238,8 @@ public class CollectionTickRunner {
                 CollectionGroupOidSpec oid = new CollectionGroupOidSpec(
                         point.name(),
                         point.template(),
-                        point.requiresInstance()
+                        point.requiresInstance(),
+                        point.scale()
                 );
                 queries.add(new SnmpQueryClient.OidQuery(point.name(), oidTemplateResolver.resolve(oid, resolveTarget)));
             }
@@ -249,8 +251,9 @@ public class CollectionTickRunner {
                     spec.retries(),
                     queries
             );
+            Map<String, Object> scaled = ScaledValues.applyLive(values, points);
             for (LiveCollectionPointSpec point : points) {
-                Object value = values.get(point.name());
+                Object value = scaled.get(point.name());
                 if (value == null) {
                     continue;
                 }

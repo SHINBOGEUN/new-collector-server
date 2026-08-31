@@ -138,8 +138,8 @@ class CollectionTickRunnerTest {
                                 161,
                                 null,
                                 List.of(
-                                        new LiveCollectionPointSpec("V", "1.3.6.1.4.1.6375.1.1.0", false, "V"),
-                                        new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, "W")
+                                        new LiveCollectionPointSpec("V", "1.3.6.1.4.1.6375.1.1.0", false, null, "V"),
+                                        new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, null, "W")
                                 )
                         ))
                 ),
@@ -213,7 +213,7 @@ class CollectionTickRunnerTest {
                                         "slow",
                                         161,
                                         null,
-                                        List.of(new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, "W"))
+                                        List.of(new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, null, "W"))
                                 ),
                                 new LiveCollectionTargetSpec(
                                         11,
@@ -221,7 +221,7 @@ class CollectionTickRunnerTest {
                                         "fast",
                                         161,
                                         null,
-                                        List.of(new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, "W"))
+                                        List.of(new LiveCollectionPointSpec("W", "1.3.6.1.4.1.6375.1.8.0", false, null, "W"))
                                 )
                         )
                 ),
@@ -246,7 +246,7 @@ class CollectionTickRunnerTest {
                 2000,
                 1,
                 10,
-                List.of(new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.0", false)),
+                List.of(new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.0", false, null)),
                 targets,
                 List.of()
         );

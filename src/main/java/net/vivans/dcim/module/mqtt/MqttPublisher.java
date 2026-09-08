@@ -6,6 +6,9 @@ public interface MqttPublisher {
 
     void publishSensorReading(int taskId, int groupId, int deviceId, Map<String, Object> values);
 
+    default void publishPueReading(int pueDefinitionId, int configVersion, double value, double totalPower, double coolerPower) {
+    }
+
     default void publishLivePoint(
             int deviceId,
             String displayName,

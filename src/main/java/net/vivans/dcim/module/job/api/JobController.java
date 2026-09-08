@@ -10,6 +10,7 @@ import net.vivans.dcim.module.job.api.dto.JobToggleRequest;
 import net.vivans.dcim.module.job.application.JobService;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
+import net.vivans.dcim.module.job.domain.PueCollectionSpec;
 import net.vivans.dcim.shared.api.ApiResponse;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,6 +58,18 @@ public class JobController {
         return ApiResponse.ok(jobService.register(spec));
     }
 
+    @PutMapping("/pue-jobs/{definitionId}")
+    @Operation(summary = "PUE 파생 수집 job을 등록하거나 교체한다.")
+    public ApiResponse<Void> upsertPue(@PathVariable Integer definitionId, @RequestBody PueCollectionSpec spec) {
+        if (!definitionId.equals(spec.pueDefinitionId())) throw new IllegalArgumentException("definitionId mismatch");
+        jobService.upsertPue(spec);
+        return ApiResponse.ok();
+    }
+
+    @DeleteMapping("/pue-jobs/{definitionId}")
+    @Operation(summary = "PUE 파생 수집 job을 삭제한다.")
+    public ApiResponse<Void> deletePue(@PathVariable Integer definitionId) { jobService.deletePue(definitionId); return ApiResponse.ok(); }
+
     @PutMapping("/jobs/{collectorJobId}")
     @Operation(summary = "등록된 job의 spec을 교체하고 cron을 다시 건다.")
     public ApiResponse<JobResponse> update(
@@ -91,6 +104,9 @@ public class JobController {
     @GetMapping("/health")
     @Operation(summary = "컬렉터 생존 확인. DB가 없으므로 job 개수만 반환한다.")
     public ApiResponse<HealthResponse> health() {
-        return ApiResponse.ok(new HealthResponse("UP", jobService.count(), Map.of("storage", "memory")));
+        return ApiResponse.ok(new HealthResponse("UP", jobService.count(), Map.of(
+                "storage", "memory",
+                "instanceId", jobService.getInstanceId()
+        )));
     }
 }

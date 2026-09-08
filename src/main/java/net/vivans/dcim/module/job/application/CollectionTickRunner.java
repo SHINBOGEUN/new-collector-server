@@ -53,14 +53,25 @@ public class CollectionTickRunner {
 
     public void run(CollectionGroupSpec spec, AtomicBoolean running) {
         if (!running.compareAndSet(false, true)) {
-            log.info("이전 tick이 아직 실행 중이라 건너뜁니다. groupId={}", spec.groupId());
+            log.info("[COLLECT_SKIP] type=REGULAR taskId={} groupId={} reason=ALREADY_RUNNING",
+                    spec.taskId(), spec.groupId());
             return;
         }
+        long startedAt = System.nanoTime();
+        int targetCount = spec.targets() == null ? 0 : spec.targets().size();
+        log.info("[COLLECT_START] type=REGULAR taskId={} groupId={} targetCount={}",
+                spec.taskId(), spec.groupId(), targetCount);
         try {
             collect(spec);
+            log.info("[COLLECT_END] type=REGULAR taskId={} groupId={} targetCount={} elapsedMs={}",
+                    spec.taskId(), spec.groupId(), targetCount, elapsedMillis(startedAt));
         } finally {
             running.set(false);
         }
+    }
+
+    private static long elapsedMillis(long startedAt) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
     }
 
     public void runLive(LiveCollectionSpec spec, AtomicBoolean running) {

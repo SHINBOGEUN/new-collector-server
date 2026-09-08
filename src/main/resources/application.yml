@@ -45,5 +45,6 @@ collector:
     client-id: ${MQTT_CLIENT_ID:new-collector-server}
     topic: ${MQTT_TOPIC:dcim/sensor/data}
     realtime-topic: ${MQTT_REALTIME_TOPIC:dcim/sensor/realtime}
+    pue-topic: ${MQTT_PUE_TOPIC:dcim/derived/pue}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}

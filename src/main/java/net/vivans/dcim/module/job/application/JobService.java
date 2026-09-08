@@ -30,8 +30,11 @@ public class JobService {
 
     private final ThreadPoolTaskScheduler scheduler;
     private final CollectionTickRunner tickRunner;
+    private final PueTickRunner tickRunnerPue;
     private final Map<String, RegisteredJob> jobs = new ConcurrentHashMap<>();
     private final Map<Integer, String> jobIdByGroupId = new ConcurrentHashMap<>();
+    private final Map<Integer, PueJob> pueJobs = new ConcurrentHashMap<>();
+    private final String instanceId = UUID.randomUUID().toString();
     private final AtomicBoolean liveRunning = new AtomicBoolean(false);
     private final Object liveLock = new Object();
     private volatile LiveCollectionSpec liveSpec;
@@ -39,10 +42,12 @@ public class JobService {
 
     public JobService(
             @Qualifier("collectorTaskScheduler") ThreadPoolTaskScheduler scheduler,
-            CollectionTickRunner tickRunner
+            CollectionTickRunner tickRunner,
+            PueTickRunner tickRunnerPue
     ) {
         this.scheduler = scheduler;
         this.tickRunner = tickRunner;
+        this.tickRunnerPue = tickRunnerPue;
     }
 
     public JobResponse register(CollectionGroupSpec spec) {
@@ -56,7 +61,7 @@ public class JobService {
         jobs.put(jobId, job);
         jobIdByGroupId.put(spec.groupId(), jobId);
         schedule(job);
-        log.info("job 등록 collectorJobId={} groupId={}", jobId, spec.groupId());
+        log.info("[COLLECTOR_JOB_END] type=REGULAR action=REGISTER collectorJobId={} groupId={}", jobId, spec.groupId());
         return toResponse(job);
     }
 
@@ -70,7 +75,7 @@ public class JobService {
         if (current.enabled()) {
             schedule(current);
         }
-        log.info("job 갱신 collectorJobId={} groupId={}", collectorJobId, spec.groupId());
+        log.info("[COLLECTOR_JOB_END] type=REGULAR action=UPDATE collectorJobId={} groupId={}", collectorJobId, spec.groupId());
         return toResponse(current);
     }
 
@@ -79,7 +84,7 @@ public class JobService {
         cancel(job);
         jobs.remove(collectorJobId);
         jobIdByGroupId.remove(job.spec().groupId());
-        log.info("job 삭제 collectorJobId={}", collectorJobId);
+        log.info("[COLLECTOR_JOB_END] type=REGULAR action=DELETE collectorJobId={}", collectorJobId);
     }
 
     public JobResponse toggle(String collectorJobId, JobToggleRequest request) {
@@ -92,7 +97,7 @@ public class JobService {
         if (job.enabled()) {
             schedule(job);
         }
-        log.info("job toggle collectorJobId={} enabled={}", collectorJobId, job.enabled());
+        log.info("[COLLECTOR_JOB_END] type=REGULAR action=TOGGLE collectorJobId={} enabled={}", collectorJobId, job.enabled());
         return toResponse(job);
     }
 
@@ -134,7 +139,44 @@ public class JobService {
 
     public int count() {
         int live = liveSpec == null ? 0 : 1;
-        return jobs.size() + live;
+        return jobs.size() + pueJobs.size() + live;
+    }
+
+    public String getInstanceId() {
+        return instanceId;
+    }
+
+    public void upsertPue(net.vivans.dcim.module.job.domain.PueCollectionSpec spec) {
+        if (spec == null || spec.pueDefinitionId() == null || spec.cronExpression() == null || spec.sources() == null || spec.sources().isEmpty()) {
+            throw new IllegalArgumentException("valid PUE spec is required");
+        }
+        log.info("[PUE_JOB_START] action=UPSERT definitionId={} sourceCount={} cron={}",
+                spec.pueDefinitionId(), spec.sources().size(), spec.cronExpression());
+        try {
+            PueJob job = pueJobs.computeIfAbsent(spec.pueDefinitionId(), ignored -> new PueJob());
+            if (job.future != null) {
+                job.future.cancel(false);
+            }
+            job.spec = spec;
+            job.future = scheduler.schedule(
+                    () -> tickRunnerPue.run(job.spec, job.running),
+                    new CronTrigger(spec.cronExpression(), ZoneId.systemDefault())
+            );
+            log.info("[PUE_JOB_END] action=UPSERT definitionId={} activePueJobCount={}",
+                    spec.pueDefinitionId(), pueJobs.size());
+        } catch (RuntimeException exception) {
+            log.warn("[PUE_JOB_ERROR] action=UPSERT definitionId={} exception={} message={}",
+                    spec.pueDefinitionId(), exception.getClass().getSimpleName(), exception.getMessage());
+            throw exception;
+        }
+    }
+    public void deletePue(Integer definitionId) {
+        log.info("[PUE_JOB_START] action=DELETE definitionId={}", definitionId);
+        PueJob job = pueJobs.remove(definitionId);
+        if (job != null && job.future != null) {
+            job.future.cancel(false);
+        }
+        log.info("[PUE_JOB_END] action=DELETE definitionId={} removed={}", definitionId, job != null);
     }
 
     private void schedule(RegisteredJob job) {
@@ -286,4 +328,5 @@ public class JobService {
             this.future = future;
         }
     }
+    static final class PueJob { private final AtomicBoolean running=new AtomicBoolean(false); private volatile net.vivans.dcim.module.job.domain.PueCollectionSpec spec; private volatile ScheduledFuture<?> future; }
 }

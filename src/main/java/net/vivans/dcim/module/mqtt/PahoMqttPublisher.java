@@ -45,6 +45,9 @@ public class PahoMqttPublisher implements MqttPublisher {
     @Value("${collector.mqtt.realtime-topic:dcim/sensor/realtime}")
     private String realtimeTopic;
 
+    @Value("${collector.mqtt.pue-topic:dcim/derived/pue}")
+    private String pueTopic;
+
     @Value("${collector.mqtt.username:}")
     private String username;
 
@@ -124,6 +127,35 @@ public class PahoMqttPublisher implements MqttPublisher {
             log.debug("MQTT live publish device:{} point:{} topic={}", deviceId, pointName, realtimeTopic);
         } catch (Exception ex) {
             log.warn("MQTT live publish 실패 device:{} point:{}: {}", deviceId, pointName, ex.getMessage());
+        }
+    }
+
+    @Override
+    public void publishPueReading(int pueDefinitionId, int configVersion, double value, double totalPower, double coolerPower) {
+        if (!enabled) {
+            log.info("[PUE_MQTT_SKIP] action=PUBLISH definitionId={} reason=CLIENT_DISABLED", pueDefinitionId);
+            return;
+        }
+        try {
+            ensureConnected();
+            if (client == null || !client.isConnected()) {
+                log.warn("[PUE_MQTT_SKIP] action=PUBLISH definitionId={} reason=NOT_CONNECTED", pueDefinitionId);
+                return;
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("datetime", LocalDateTime.now().format(DATETIME));
+            payload.put("pueDefinitionId", pueDefinitionId);
+            payload.put("configVersion", configVersion);
+            payload.put("value", value);
+            payload.put("totalPower", totalPower);
+            payload.put("coolerPower", coolerPower);
+            MqttMessage message = new MqttMessage(objectMapper.writeValueAsBytes(payload));
+            message.setQos(0);
+            client.publish(pueTopic, message);
+            log.info("[PUE_MQTT_END] action=PUBLISH definitionId={} topic={}", pueDefinitionId, pueTopic);
+        } catch (Exception exception) {
+            log.warn("[PUE_MQTT_ERROR] action=PUBLISH definitionId={} topic={} exception={} message={}",
+                    pueDefinitionId, pueTopic, exception.getClass().getSimpleName(), exception.getMessage());
         }
     }
 

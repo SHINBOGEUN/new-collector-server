@@ -21,6 +21,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -33,6 +34,12 @@ public class JobService {
     private final PueTickRunner tickRunnerPue;
     private final Map<String, RegisteredJob> jobs = new ConcurrentHashMap<>();
     private final Map<Integer, String> jobIdByGroupId = new ConcurrentHashMap<>();
+    /**
+     * groupId 단위 register/update/delete를 원자적으로 만들기 위한 락.
+     * 동시에 같은 groupId로 register()가 두 번 들어와도(TOCTOU) 중복 job이 생기지 않게 한다.
+     * register 빈도가 낮은 관리 operation이라 단일 락으로도 충분하다(tick 실행 경로에는 영향 없음).
+     */
+    private final Object registrationLock = new Object();
     private final Map<Integer, PueJob> pueJobs = new ConcurrentHashMap<>();
     private final String instanceId = UUID.randomUUID().toString();
     private final AtomicBoolean liveRunning = new AtomicBoolean(false);
@@ -52,39 +59,45 @@ public class JobService {
 
     public JobResponse register(CollectionGroupSpec spec) {
         validate(spec);
-        String existingId = jobIdByGroupId.get(spec.groupId());
-        if (existingId != null && jobs.containsKey(existingId)) {
-            return update(existingId, spec);
+        synchronized (registrationLock) {
+            String existingId = jobIdByGroupId.get(spec.groupId());
+            if (existingId != null && jobs.containsKey(existingId)) {
+                return update(existingId, spec);
+            }
+            String jobId = UUID.randomUUID().toString();
+            RegisteredJob job = new RegisteredJob(jobId, spec, true);
+            jobs.put(jobId, job);
+            jobIdByGroupId.put(spec.groupId(), jobId);
+            schedule(job);
+            log.info("[COLLECTOR_JOB_END] type=REGULAR action=REGISTER collectorJobId={} groupId={}", jobId, spec.groupId());
+            return toResponse(job);
         }
-        String jobId = UUID.randomUUID().toString();
-        RegisteredJob job = new RegisteredJob(jobId, spec, true);
-        jobs.put(jobId, job);
-        jobIdByGroupId.put(spec.groupId(), jobId);
-        schedule(job);
-        log.info("[COLLECTOR_JOB_END] type=REGULAR action=REGISTER collectorJobId={} groupId={}", jobId, spec.groupId());
-        return toResponse(job);
     }
 
     public JobResponse update(String collectorJobId, CollectionGroupSpec spec) {
         validate(spec);
-        RegisteredJob current = requireJob(collectorJobId);
-        cancel(current);
-        jobIdByGroupId.remove(current.spec().groupId());
-        current.replaceSpec(spec);
-        jobIdByGroupId.put(spec.groupId(), collectorJobId);
-        if (current.enabled()) {
-            schedule(current);
+        synchronized (registrationLock) {
+            RegisteredJob current = requireJob(collectorJobId);
+            cancel(current);
+            jobIdByGroupId.remove(current.spec().groupId());
+            current.replaceSpec(spec);
+            jobIdByGroupId.put(spec.groupId(), collectorJobId);
+            if (current.enabled()) {
+                schedule(current);
+            }
+            log.info("[COLLECTOR_JOB_END] type=REGULAR action=UPDATE collectorJobId={} groupId={}", collectorJobId, spec.groupId());
+            return toResponse(current);
         }
-        log.info("[COLLECTOR_JOB_END] type=REGULAR action=UPDATE collectorJobId={} groupId={}", collectorJobId, spec.groupId());
-        return toResponse(current);
     }
 
     public void delete(String collectorJobId) {
-        RegisteredJob job = requireJob(collectorJobId);
-        cancel(job);
-        jobs.remove(collectorJobId);
-        jobIdByGroupId.remove(job.spec().groupId());
-        log.info("[COLLECTOR_JOB_END] type=REGULAR action=DELETE collectorJobId={}", collectorJobId);
+        synchronized (registrationLock) {
+            RegisteredJob job = requireJob(collectorJobId);
+            cancel(job);
+            jobs.remove(collectorJobId);
+            jobIdByGroupId.remove(job.spec().groupId());
+            log.info("[COLLECTOR_JOB_END] type=REGULAR action=DELETE collectorJobId={}", collectorJobId);
+        }
     }
 
     public JobResponse toggle(String collectorJobId, JobToggleRequest request) {
@@ -182,7 +195,7 @@ public class JobService {
     private void schedule(RegisteredJob job) {
         CronTrigger trigger = new CronTrigger(job.spec().cronExpression(), ZoneId.systemDefault());
         ScheduledFuture<?> future = scheduler.schedule(
-                () -> tickRunner.run(job.spec(), job.running()),
+                () -> tickRunner.run(job.spec(), job.running(), job::recordTickResult),
                 trigger
         );
         job.setFuture(future);
@@ -265,7 +278,11 @@ public class JobService {
                 spec == null ? null : spec.protocol(),
                 null,
                 spec != null,
-                spec == null || spec.targets() == null ? 0 : spec.targets().size()
+                spec == null || spec.targets() == null ? 0 : spec.targets().size(),
+                null,
+                null,
+                0,
+                null
         );
     }
 
@@ -279,7 +296,11 @@ public class JobService {
                 spec.protocol(),
                 spec.cronExpression(),
                 job.enabled(),
-                spec.targets() == null ? 0 : spec.targets().size()
+                spec.targets() == null ? 0 : spec.targets().size(),
+                job.lastSuccessAt(),
+                job.lastFailureAt(),
+                job.consecutiveFailureCount(),
+                job.lastFailureReason()
         );
     }
 
@@ -289,6 +310,10 @@ public class JobService {
         private volatile CollectionGroupSpec spec;
         private volatile boolean enabled;
         private volatile ScheduledFuture<?> future;
+        private final AtomicInteger consecutiveFailureCount = new AtomicInteger(0);
+        private volatile Instant lastFailureAt;
+        private volatile String lastFailureReason;
+        private volatile Instant lastSuccessAt;
 
         RegisteredJob(String collectorJobId, CollectionGroupSpec spec, boolean enabled) {
             this.collectorJobId = collectorJobId;
@@ -326,6 +351,40 @@ public class JobService {
 
         void setFuture(ScheduledFuture<?> future) {
             this.future = future;
+        }
+
+        /**
+         * tick 결과를 반영한다. 이번 tick에서 하나라도 실패했으면 실패로 집계하고(부분 성공이어도
+         * '완전히 정상'은 아니므로), 실패한 대상이 하나도 없을 때만 정상 복구로 보고 연속 실패
+         * 횟수를 0으로 되돌린다. 별도의 '복구 처리' 로직 없이, 다음 정상 tick이 곧 자동 복구다.
+         */
+        void recordTickResult(CollectionTickSummary summary) {
+            if (summary.failed() > 0) {
+                consecutiveFailureCount.incrementAndGet();
+                lastFailureAt = Instant.now();
+                if (summary.lastFailureReason() != null) {
+                    lastFailureReason = summary.lastFailureReason();
+                }
+            } else if (summary.success() > 0) {
+                consecutiveFailureCount.set(0);
+                lastSuccessAt = Instant.now();
+            }
+        }
+
+        int consecutiveFailureCount() {
+            return consecutiveFailureCount.get();
+        }
+
+        Instant lastFailureAt() {
+            return lastFailureAt;
+        }
+
+        String lastFailureReason() {
+            return lastFailureReason;
+        }
+
+        Instant lastSuccessAt() {
+            return lastSuccessAt;
         }
     }
     static final class PueJob { private final AtomicBoolean running=new AtomicBoolean(false); private volatile net.vivans.dcim.module.job.domain.PueCollectionSpec spec; private volatile ScheduledFuture<?> future; }

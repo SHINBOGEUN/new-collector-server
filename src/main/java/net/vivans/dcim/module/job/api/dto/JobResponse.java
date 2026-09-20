@@ -1,5 +1,7 @@
 package net.vivans.dcim.module.job.api.dto;
 
+import java.time.Instant;
+
 public record JobResponse(
         String collectorJobId,
         Integer taskId,
@@ -8,6 +10,10 @@ public record JobResponse(
         String protocol,
         String cronExpression,
         boolean enabled,
-        int targetCount
+        int targetCount,
+        Instant lastSuccessAt,
+        Instant lastFailureAt,
+        int consecutiveFailureCount,
+        String lastFailureReason
 ) {
 }

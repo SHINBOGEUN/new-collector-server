@@ -22,6 +22,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @Component
@@ -52,6 +53,15 @@ public class CollectionTickRunner {
     }
 
     public void run(CollectionGroupSpec spec, AtomicBoolean running) {
+        run(spec, running, summary -> { });
+    }
+
+    /**
+     * @param listener tick이 실제로 실행되어 완료되었을 때 결과를 통지받는다(등록된 job의
+     *                  최근 실패 시각/횟수/원인을 추적하는 용도). SNMP가 아니거나 대상이 없어
+     *                  건너뛴 tick에서는 호출되지 않는다.
+     */
+    public void run(CollectionGroupSpec spec, AtomicBoolean running, CollectionTickListener listener) {
         if (!running.compareAndSet(false, true)) {
             log.info("[COLLECT_SKIP] type=REGULAR taskId={} groupId={} reason=ALREADY_RUNNING",
                     spec.taskId(), spec.groupId());
@@ -62,9 +72,12 @@ public class CollectionTickRunner {
         log.info("[COLLECT_START] type=REGULAR taskId={} groupId={} targetCount={}",
                 spec.taskId(), spec.groupId(), targetCount);
         try {
-            collect(spec);
+            CollectionTickSummary summary = collect(spec);
             log.info("[COLLECT_END] type=REGULAR taskId={} groupId={} targetCount={} elapsedMs={}",
                     spec.taskId(), spec.groupId(), targetCount, elapsedMillis(startedAt));
+            if (summary != null) {
+                listener.onTickCompleted(summary);
+            }
         } finally {
             running.set(false);
         }
@@ -78,15 +91,15 @@ public class CollectionTickRunner {
         collectLive(spec);
     }
 
-    private void collect(CollectionGroupSpec spec) {
+    private CollectionTickSummary collect(CollectionGroupSpec spec) {
         if (spec.protocol() == null || !"snmp".equalsIgnoreCase(spec.protocol())) {
             log.debug("SNMP가 아닌 프로토콜은 실행하지 않습니다. groupId={} protocol={}", spec.groupId(), spec.protocol());
-            return;
+            return null;
         }
         List<CollectionGroupTargetSpec> targets = spec.targets() == null ? List.of() : spec.targets();
         if (targets.isEmpty()) {
             log.debug("수집 대상이 없습니다. groupId={}", spec.groupId());
-            return;
+            return null;
         }
 
         int concurrency = Math.max(spec.maxConcurrency(), 1);
@@ -94,19 +107,23 @@ public class CollectionTickRunner {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         AtomicInteger successCount = new AtomicInteger();
         AtomicInteger failureCount = new AtomicInteger();
+        AtomicReference<String> lastFailureReason = new AtomicReference<>();
 
         for (CollectionGroupTargetSpec target : targets) {
             futures.add(CompletableFuture.runAsync(() -> {
                 try {
                     semaphore.acquire();
-                    if (collectTarget(spec, target)) {
+                    CollectResult result = collectTarget(spec, target);
+                    if (result.success()) {
                         successCount.incrementAndGet();
                     } else {
                         failureCount.incrementAndGet();
+                        lastFailureReason.set(result.reason());
                     }
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                     failureCount.incrementAndGet();
+                    lastFailureReason.set("interrupted: " + ex.getMessage());
                 } finally {
                     semaphore.release();
                 }
@@ -123,12 +140,16 @@ public class CollectionTickRunner {
                     spec.groupId(),
                     ex.getMessage()
             );
+            lastFailureReason.compareAndSet(null, "tick 대기 중 오류: " + ex.getMessage());
         }
 
-        logTickSummary(spec, targets.size(), successCount.get(), failureCount.get());
+        CollectionTickSummary summary = new CollectionTickSummary(
+                targets.size(), successCount.get(), failureCount.get(), lastFailureReason.get());
+        logTickSummary(spec, summary.total(), summary.success(), summary.failed());
+        return summary;
     }
 
-    private boolean collectTarget(CollectionGroupSpec spec, CollectionGroupTargetSpec target) {
+    private CollectResult collectTarget(CollectionGroupSpec spec, CollectionGroupTargetSpec target) {
         try {
             List<SnmpQueryClient.OidQuery> queries = new ArrayList<>();
             for (CollectionGroupOidSpec oid : spec.oids() == null ? List.<CollectionGroupOidSpec>of() : spec.oids()) {
@@ -145,9 +166,11 @@ public class CollectionTickRunner {
             Map<String, Object> scaled = ScaledValues.apply(values, spec.oids());
             mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), scaled);
             collectionMetrics.recordSuccess();
-            return true;
+            return new CollectResult(true, null);
         } catch (Exception ex) {
             collectionMetrics.recordFailure();
+            String reason = "deviceId=" + target.deviceId() + " host=" + target.host() + ":" + target.port()
+                    + " " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
             log.warn(
                     "수집 실패 taskId={} groupId={} deviceId={} host={}:{} reason={}",
                     spec.taskId(),
@@ -157,20 +180,23 @@ public class CollectionTickRunner {
                     target.port(),
                     ex.getMessage()
             );
-            return false;
+            return new CollectResult(false, reason);
         }
     }
 
+    /** 사람이 읽을 수 있는 실패 원인을 tick 결과 취합 단계로 전달하기 위한 내부 결과 타입. */
+    private record CollectResult(boolean success, String reason) {
+    }
+
     private void logTickSummary(CollectionGroupSpec spec, int total, int success, int failed) {
-        CollectionTickSummary summary = new CollectionTickSummary(total, success, failed);
         if (failed > 0) {
             log.warn(
                     "수집 tick 요약 taskId={} groupId={} total={} success={} failed={}",
                     spec.taskId(),
                     spec.groupId(),
-                    summary.total(),
-                    summary.success(),
-                    summary.failed()
+                    total,
+                    success,
+                    failed
             );
             return;
         }
@@ -178,9 +204,9 @@ public class CollectionTickRunner {
                 "수집 tick 요약 taskId={} groupId={} total={} success={} failed={}",
                 spec.taskId(),
                 spec.groupId(),
-                summary.total(),
-                summary.success(),
-                summary.failed()
+                total,
+                success,
+                failed
         );
     }
 

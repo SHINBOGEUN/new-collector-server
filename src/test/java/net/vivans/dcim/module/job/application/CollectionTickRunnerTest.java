@@ -34,12 +34,8 @@ class CollectionTickRunnerTest {
         };
         AtomicInteger published = new AtomicInteger();
         MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> published.incrementAndGet();
-        CollectionTickRunner runner = new CollectionTickRunner(
-                snmp,
-                mqtt,
-                new OidTemplateResolver(),
-                new CollectionMetrics(new SimpleMeterRegistry())
-        );
+        CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
 
         CollectionGroupSpec spec = spec(
                 List.of(
@@ -71,12 +67,8 @@ class CollectionTickRunnerTest {
         };
         AtomicInteger published = new AtomicInteger();
         MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> published.incrementAndGet();
-        CollectionTickRunner runner = new CollectionTickRunner(
-                snmp,
-                mqtt,
-                new OidTemplateResolver(),
-                new CollectionMetrics(new SimpleMeterRegistry())
-        );
+        CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
         CollectionGroupSpec spec = spec(List.of(new CollectionGroupTargetSpec(1, "host", 161, null)));
         AtomicBoolean running = new AtomicBoolean(false);
 
@@ -116,12 +108,8 @@ class CollectionTickRunnerTest {
                 publishedLatch.countDown();
             }
         };
-        CollectionTickRunner runner = new CollectionTickRunner(
-                snmp,
-                mqtt,
-                new OidTemplateResolver(),
-                new CollectionMetrics(new SimpleMeterRegistry())
-        );
+        CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
 
         runner.runLive(
                 new LiveCollectionSpec(
@@ -190,12 +178,8 @@ class CollectionTickRunnerTest {
                 }
             }
         };
-        CollectionTickRunner runner = new CollectionTickRunner(
-                snmp,
-                mqtt,
-                new OidTemplateResolver(),
-                new CollectionMetrics(new SimpleMeterRegistry())
-        );
+        CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
 
         long startedAt = System.nanoTime();
         runner.runLive(

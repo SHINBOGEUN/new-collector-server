@@ -36,8 +36,8 @@ class JobServiceTest {
         scheduler.setPoolSize(4);
         scheduler.setThreadNamePrefix("job-service-test-");
         scheduler.initialize();
-        CollectionTickRunner tickRunner = new CollectionTickRunner(
-                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry()));
+        CollectionTickRunner tickRunner = new CollectionTickRunner(new SnmpCollectionRunner(
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
         PueTickRunner pueTickRunner = new PueTickRunner(snmp, mqtt);
         return new JobService(scheduler, tickRunner, pueTickRunner);
     }

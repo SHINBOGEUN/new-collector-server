@@ -18,6 +18,16 @@ MQTT 브로커가 없으면 `MQTT_ENABLED=false`로 기동할 수 있습니다. 
 
 ## Job API
 
+### SNMP 실행 역할 분리
+
+- `JobService`: 작업 등록·스케줄·활성 상태 관리 (기존 동작 유지).
+- `CollectionTickRunner`: 그룹 병렬 실행, tick/실시간 대상 중복 방지, 결과 집계.
+- `SnmpCollectionRunner`: 장비 한 대의 OID 치환·SNMP 조회·배율 적용·MQTT 발행 및 장비 단위 성공/실패 지표 기록.
+- `CollectionTargetResult`: 정기 수집의 성공 여부와 실패 사유 전달.
+
+정기 수집과 실시간 수집의 JSON/API는 변경하지 않았습니다. 현재 실행 지원은 여전히 SNMP이며,
+프로토콜별 검증 분리와 Modbus 지원은 후속 작업입니다.
+
 | Method | Path |
 |--------|------|
 | POST | `/api/jobs/register` |

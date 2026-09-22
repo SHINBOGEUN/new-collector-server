@@ -21,7 +21,10 @@ springdoc:
 logging:
   level:
     root: ${LOG_LEVEL:INFO}
-    net.vivans.dcim: DEBUG
+    net.vivans.dcim: ${APP_LOG_LEVEL:INFO}
+  pattern:
+    console: "%d{MM-dd HH:mm:ss.SSS} %-5level [collector] [%-18.18thread] %-36.36logger{36} | %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [collector] [%-18.18thread] %-48.48logger{48} | %msg%n"
   file:
     name: ${LOG_FILE_NAME:./logs/application.log}
 

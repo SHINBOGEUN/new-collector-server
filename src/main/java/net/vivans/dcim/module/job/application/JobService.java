@@ -32,6 +32,7 @@ public class JobService {
     private final ThreadPoolTaskScheduler scheduler;
     private final CollectionTickRunner tickRunner;
     private final PueTickRunner tickRunnerPue;
+    private final CollectionSpecValidator collectionSpecValidator;
     private final Map<String, RegisteredJob> jobs = new ConcurrentHashMap<>();
     private final Map<Integer, String> jobIdByGroupId = new ConcurrentHashMap<>();
     /**
@@ -50,15 +51,17 @@ public class JobService {
     public JobService(
             @Qualifier("collectorTaskScheduler") ThreadPoolTaskScheduler scheduler,
             CollectionTickRunner tickRunner,
-            PueTickRunner tickRunnerPue
+            PueTickRunner tickRunnerPue,
+            CollectionSpecValidator collectionSpecValidator
     ) {
         this.scheduler = scheduler;
         this.tickRunner = tickRunner;
         this.tickRunnerPue = tickRunnerPue;
+        this.collectionSpecValidator = collectionSpecValidator;
     }
 
     public JobResponse register(CollectionGroupSpec spec) {
-        validate(spec);
+        collectionSpecValidator.validate(spec);
         synchronized (registrationLock) {
             String existingId = jobIdByGroupId.get(spec.groupId());
             if (existingId != null && jobs.containsKey(existingId)) {
@@ -75,7 +78,7 @@ public class JobService {
     }
 
     public JobResponse update(String collectorJobId, CollectionGroupSpec spec) {
-        validate(spec);
+        collectionSpecValidator.validate(spec);
         synchronized (registrationLock) {
             RegisteredJob current = requireJob(collectorJobId);
             cancel(current);
@@ -237,23 +240,6 @@ public class JobService {
             throw new NoSuchElementException("job을 찾을 수 없습니다: " + collectorJobId);
         }
         return job;
-    }
-
-    private void validate(CollectionGroupSpec spec) {
-        if (spec == null) {
-            throw new IllegalArgumentException("spec이 필요합니다.");
-        }
-        if (spec.groupId() == null || spec.taskId() == null) {
-            throw new IllegalArgumentException("taskId와 groupId가 필요합니다.");
-        }
-        if (spec.cronExpression() == null || spec.cronExpression().isBlank()) {
-            throw new IllegalArgumentException("cronExpression이 필요합니다.");
-        }
-        try {
-            new CronTrigger(spec.cronExpression(), ZoneId.systemDefault());
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("cronExpression이 올바르지 않습니다: " + spec.cronExpression());
-        }
     }
 
     private void validateLive(LiveCollectionSpec spec) {

@@ -33,14 +33,41 @@ class JobServiceTest {
     private ThreadPoolTaskScheduler scheduler;
 
     private JobService newJobService(SnmpQueryClient snmp, MqttPublisher mqtt) {
+        // 1. 테스트용 스케줄러
         scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(4);
         scheduler.setThreadNamePrefix("job-service-test-");
         scheduler.initialize();
-        CollectionTickRunner tickRunner = new CollectionTickRunner(new SnmpCollectionRunner(
-                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
+        // 2. SNMP 실행과 검증에서 함께 사용할 OID 해석기
+        OidTemplateResolver oidTemplateResolver = new OidTemplateResolver();
+
+        // 3. 수집 실행기 구성
+        CollectionMetrics metrics =
+                new CollectionMetrics(new SimpleMeterRegistry());
+
+        SnmpCollectionRunner snmpRunner = new SnmpCollectionRunner(
+                snmp,
+                mqtt,
+                oidTemplateResolver,
+                metrics
+        );
+
+        CollectionTickRunner tickRunner = new CollectionTickRunner(snmpRunner);
         PueTickRunner pueTickRunner = new PueTickRunner(snmp, mqtt);
-        return new JobService(scheduler, tickRunner, pueTickRunner);
+
+        // 4. 공통 검증기와 프로토콜별 검증기 구성
+        CollectionSpecValidator validator = new CollectionSpecValidator(
+                new SnmpSpecValidator(oidTemplateResolver),
+                new ModbusSpecValidator()
+        );
+
+        // 5. 실행기와 검증기를 JobService에 전달
+        return new JobService(
+                scheduler,
+                tickRunner,
+                pueTickRunner,
+                validator
+        );
     }
 
     @AfterEach

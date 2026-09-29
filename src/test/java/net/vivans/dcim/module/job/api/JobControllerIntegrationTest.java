@@ -2,9 +2,10 @@ package net.vivans.dcim.module.job.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import net.vivans.dcim.bootstrap.CollectorServerApplication;
-import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
+import net.vivans.dcim.module.job.domain.snmp.CollectionGroupOidSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionPointSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionTargetSpec;
@@ -65,7 +66,7 @@ class JobControllerIntegrationTest {
         when(snmpQueryClient.get(anyString(), anyInt(), anyString(), anyInt(), anyInt(), anyList()))
                 .thenReturn(Map.of("V", 220.1));
 
-        CollectionGroupSpec spec = new CollectionGroupSpec(
+        CollectionGroupSpec spec = new SnmpCollectionGroupSpec(
                 1,
                 11,
                 10,
@@ -76,7 +77,7 @@ class JobControllerIntegrationTest {
                 1,
                 10,
                 List.of(new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.0", false, null)),
-                List.of(new CollectionGroupTargetSpec(3, "192.168.14.114", 161, null)),
+                List.of(new SnmpCollectionTargetSpec(3, "192.168.14.114", 161, null)),
                 List.of()
         );
 
@@ -159,5 +160,53 @@ class JobControllerIntegrationTest {
         mockMvc.perform(get("/api/jobs/live")
                         .header("X-Api-Key", "test-manager-key"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void registerAndUpdateModbusJsonThroughCommonApi() throws Exception {
+        // DTO/API 호환 테스트이며 실제 Modbus 실행 테스트는 아니다.
+        String rdc = """
+                {"taskId":4,"groupId":901,"modelId":5,"protocol":"modbus",
+                 "cronExpression":"0 0 0 1 1 *","timeoutMs":2000,"retries":1,"maxConcurrency":10,
+                 "points":[{"name":"TEMP","registerType":"INPUT","address":256,
+                            "dataType":"INT16","byteOrder":"AB","scale":0.1}],
+                 "targets":[{"deviceId":21,"host":"host","port":502,"unitId":1}],"skipped":[]}
+                """;
+        String accura = """
+                {"taskId":4,"groupId":901,"modelId":5,"protocol":"modbus",
+                 "cronExpression":"0 0 0 1 1 *","timeoutMs":2000,"retries":1,"maxConcurrency":10,
+                 "targets":[{"deviceId":20,"host":"accura","port":502,"unitId":1,
+                   "points":[{"name":"TOTAL_WT","registerType":"HOLDING","address":11415,
+                              "dataType":"FLOAT32","byteOrder":"CDAB","scale":1000}]}],"skipped":[]}
+                """;
+        String created = mockMvc.perform(post("/api/jobs/register")
+                        .header("X-Api-Key", "test-manager-key")
+                        .contentType(MediaType.APPLICATION_JSON).content(rdc))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.protocol").value("modbus"))
+                .andExpect(jsonPath("$.data.targetCount").value(1))
+                .andReturn().getResponse().getContentAsString();
+        String jobId = objectMapper.readTree(created).path("data").path("collectorJobId").asText();
+        try {
+            mockMvc.perform(put("/api/jobs/" + jobId)
+                            .header("X-Api-Key", "test-manager-key")
+                            .contentType(MediaType.APPLICATION_JSON).content(accura))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.collectorJobId").value(jobId))
+                    .andExpect(jsonPath("$.data.protocol").value("modbus"));
+        } finally {
+            mockMvc.perform(delete("/api/jobs/" + jobId).header("X-Api-Key", "test-manager-key"))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void unknownOrMissingProtocolReturnsBadRequest() throws Exception {
+        for (String body : List.of("{}", "{\"protocol\":\"mqtt\"}")) {
+            mockMvc.perform(post("/api/jobs/register")
+                            .header("X-Api-Key", "test-manager-key")
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
     }
 }

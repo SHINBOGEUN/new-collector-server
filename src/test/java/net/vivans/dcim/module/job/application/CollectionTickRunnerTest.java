@@ -1,9 +1,12 @@
 package net.vivans.dcim.module.job.application;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
+import net.vivans.dcim.module.job.domain.snmp.CollectionGroupOidSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionTargetSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionPointSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionTargetSpec;
@@ -19,8 +22,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class CollectionTickRunnerTest {
+
+    @Test
+    void modbusSpecDoesNotEnterSnmpRunner() {
+        SnmpCollectionRunner snmpRunner = mock(SnmpCollectionRunner.class);
+        CollectionTickRunner runner = new CollectionTickRunner(snmpRunner);
+        var spec = new ModbusCollectionGroupSpec(
+                1, 2, 3, "modbus", "0 * * * * *", 2000, 1, 10, null,
+                List.of(new ModbusCollectionTargetSpec(
+                        17, "host", 502, 0, List.of())), List.of());
+        AtomicBoolean running = new AtomicBoolean(false);
+        runner.run(spec, running);
+        verifyNoInteractions(snmpRunner);
+        assertThat(running.get()).isFalse();
+    }
 
     @Test
     void publishesSuccessfulDeviceImmediatelyAndSkipsFailure() throws Exception {
@@ -39,8 +58,8 @@ class CollectionTickRunnerTest {
 
         CollectionGroupSpec spec = spec(
                 List.of(
-                        new CollectionGroupTargetSpec(1, "good", 161, null),
-                        new CollectionGroupTargetSpec(2, "bad", 161, null)
+                        new SnmpCollectionTargetSpec(1, "good", 161, null),
+                        new SnmpCollectionTargetSpec(2, "bad", 161, null)
                 )
         );
 
@@ -69,7 +88,7 @@ class CollectionTickRunnerTest {
         MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> published.incrementAndGet();
         CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
                 snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
-        CollectionGroupSpec spec = spec(List.of(new CollectionGroupTargetSpec(1, "host", 161, null)));
+        CollectionGroupSpec spec = spec(List.of(new SnmpCollectionTargetSpec(1, "host", 161, null)));
         AtomicBoolean running = new AtomicBoolean(false);
 
         Thread first = new Thread(() -> runner.run(spec, running));
@@ -219,8 +238,8 @@ class CollectionTickRunnerTest {
         slowRelease.countDown();
     }
 
-    private CollectionGroupSpec spec(List<CollectionGroupTargetSpec> targets) {
-        return new CollectionGroupSpec(
+    private CollectionGroupSpec spec(List<SnmpCollectionTargetSpec> targets) {
+        return new SnmpCollectionGroupSpec(
                 1,
                 11,
                 10,

@@ -1,8 +1,8 @@
 package net.vivans.dcim.module.job.application;
 
-import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.snmp.CollectionGroupOidSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionPointSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionTargetSpec;
@@ -22,7 +22,7 @@ class SnmpCollectionRunnerTest {
     private final MqttPublisher mqtt = mock(MqttPublisher.class);
     private final CollectionMetrics metrics = mock(CollectionMetrics.class);
     private final SnmpCollectionRunner runner = new SnmpCollectionRunner(snmp, mqtt, new OidTemplateResolver(), metrics);
-    private final CollectionGroupTargetSpec target = new CollectionGroupTargetSpec(14, "host", 161, 3);
+    private final SnmpCollectionTargetSpec target = new SnmpCollectionTargetSpec(14, "host", 161, 3);
 
     @Test
     void regularResolvesOidScalesAndPublishes() throws Exception {
@@ -51,7 +51,7 @@ class SnmpCollectionRunnerTest {
 
     @Test
     void missingInstanceFailsBeforeNetworkRequest() {
-        var result = runner.collectTarget(spec(), new CollectionGroupTargetSpec(14, "host", 161, null));
+        var result = runner.collectTarget(spec(), new SnmpCollectionTargetSpec(14, "host", 161, null));
         assertThat(result.success()).isFalse();
         assertThat(result.reason()).contains("instanceId");
         verifyNoInteractions(snmp, mqtt);
@@ -100,8 +100,8 @@ class SnmpCollectionRunnerTest {
         verify(metrics).recordFailure();
     }
 
-    private CollectionGroupSpec spec() {
-        return new CollectionGroupSpec(1, 11, 4, "snmp", "0 * * * * *", "public", 2000, 1, 10,
+    private SnmpCollectionGroupSpec spec() {
+        return new SnmpCollectionGroupSpec(1, 11, 4, "snmp", "0 * * * * *", "public", 2000, 1, 10,
                 List.of(new CollectionGroupOidSpec("W", "1.3.6.{instanceId}.0", true, 1000.0)),
                 List.of(target), List.of());
     }

@@ -2,7 +2,8 @@ package net.vivans.dcim.module.job.application;
 
 import lombok.extern.slf4j.Slf4j;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionTargetSpec;
 import org.springframework.stereotype.Component;
@@ -76,11 +77,11 @@ public class CollectionTickRunner {
     }
 
     private CollectionTickSummary collect(CollectionGroupSpec spec) {
-        if (spec.protocol() == null || !"snmp".equalsIgnoreCase(spec.protocol())) {
+        if (!(spec instanceof SnmpCollectionGroupSpec snmpSpec)) {
             log.debug("SNMP가 아닌 프로토콜은 실행하지 않습니다. groupId={} protocol={}", spec.groupId(), spec.protocol());
             return null;
         }
-        List<CollectionGroupTargetSpec> targets = spec.targets() == null ? List.of() : spec.targets();
+        List<SnmpCollectionTargetSpec> targets = snmpSpec.targets() == null ? List.of() : snmpSpec.targets();
         if (targets.isEmpty()) {
             log.debug("수집 대상이 없습니다. groupId={}", spec.groupId());
             return null;
@@ -93,11 +94,11 @@ public class CollectionTickRunner {
         AtomicInteger failureCount = new AtomicInteger();
         AtomicReference<String> lastFailureReason = new AtomicReference<>();
 
-        for (CollectionGroupTargetSpec target : targets) {
+        for (SnmpCollectionTargetSpec target : targets) {
             futures.add(CompletableFuture.runAsync(() -> {
                 try {
                     semaphore.acquire();
-                    CollectionTargetResult result = snmpCollectionRunner.collectTarget(spec, target);
+                    CollectionTargetResult result = snmpCollectionRunner.collectTarget(snmpSpec, target);
                     if (result.success()) {
                         successCount.incrementAndGet();
                     } else {

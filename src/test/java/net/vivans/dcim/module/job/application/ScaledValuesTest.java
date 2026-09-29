@@ -1,6 +1,6 @@
 package net.vivans.dcim.module.job.application;
 
-import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
+import net.vivans.dcim.module.job.domain.snmp.CollectionGroupOidSpec;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

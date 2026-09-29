@@ -1,7 +1,7 @@
 package net.vivans.dcim.module.job.application;
 
-import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.snmp.CollectionGroupOidSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,7 +14,7 @@ class OidTemplateResolverTest {
     @Test
     void scalarOidKeepsTemplate() {
         CollectionGroupOidSpec oid = new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.0", false, null);
-        CollectionGroupTargetSpec target = new CollectionGroupTargetSpec(3, "192.168.14.114", 161, null);
+        SnmpCollectionTargetSpec target = new SnmpCollectionTargetSpec(3, "192.168.14.114", 161, null);
 
         assertThat(resolver.resolve(oid, target)).isEqualTo("1.3.6.1.4.1.6375.1.1.0");
     }
@@ -22,7 +22,7 @@ class OidTemplateResolverTest {
     @Test
     void instanceOidSubstitutesPlaceholder() {
         CollectionGroupOidSpec oid = new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.{instanceId}", true, null);
-        CollectionGroupTargetSpec target = new CollectionGroupTargetSpec(3, "192.168.14.114", 161, 7);
+        SnmpCollectionTargetSpec target = new SnmpCollectionTargetSpec(3, "192.168.14.114", 161, 7);
 
         assertThat(resolver.resolve(oid, target)).isEqualTo("1.3.6.1.4.1.6375.1.1.7");
     }
@@ -30,7 +30,7 @@ class OidTemplateResolverTest {
     @Test
     void instanceOidWithoutIdFails() {
         CollectionGroupOidSpec oid = new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.{instanceId}", true, null);
-        CollectionGroupTargetSpec target = new CollectionGroupTargetSpec(3, "192.168.14.114", 161, null);
+        SnmpCollectionTargetSpec target = new SnmpCollectionTargetSpec(3, "192.168.14.114", 161, null);
 
         assertThatThrownBy(() -> resolver.resolve(oid, target))
                 .isInstanceOf(IllegalArgumentException.class);

@@ -2,9 +2,10 @@ package net.vivans.dcim.module.job.application;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import net.vivans.dcim.module.job.api.dto.JobResponse;
-import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
+import net.vivans.dcim.module.job.domain.snmp.CollectionGroupOidSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.mqtt.MqttPublisher;
 import net.vivans.dcim.module.snmp.SnmpQueryClient;
 import org.junit.jupiter.api.AfterEach;
@@ -147,7 +148,7 @@ class JobServiceTest {
     }
 
     private CollectionGroupSpec spec(String cron) {
-        return new CollectionGroupSpec(
+        return new SnmpCollectionGroupSpec(
                 1,
                 11,
                 10,
@@ -158,7 +159,7 @@ class JobServiceTest {
                 1,
                 10,
                 List.of(new CollectionGroupOidSpec("V", "1.3.6.1.4.1.6375.1.1.0", false, null)),
-                List.of(new CollectionGroupTargetSpec(3, "192.168.14.114", 161, null)),
+                List.of(new SnmpCollectionTargetSpec(3, "192.168.14.114", 161, null)),
                 List.of()
         );
     }

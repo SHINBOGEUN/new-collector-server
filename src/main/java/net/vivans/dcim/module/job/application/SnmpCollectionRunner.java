@@ -1,9 +1,9 @@
 package net.vivans.dcim.module.job.application;
 
 import lombok.extern.slf4j.Slf4j;
-import net.vivans.dcim.module.job.domain.CollectionGroupOidSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
-import net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec;
+import net.vivans.dcim.module.job.domain.snmp.CollectionGroupOidSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionPointSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionTargetSpec;
@@ -36,7 +36,7 @@ public class SnmpCollectionRunner {
         this.collectionMetrics = collectionMetrics;
     }
 
-    public CollectionTargetResult collectTarget(CollectionGroupSpec spec, CollectionGroupTargetSpec target) {
+    public CollectionTargetResult collectTarget(SnmpCollectionGroupSpec spec, SnmpCollectionTargetSpec target) {
         try {
             List<SnmpQueryClient.OidQuery> queries = new ArrayList<>();
             for (CollectionGroupOidSpec oid : spec.oids() == null ? List.<CollectionGroupOidSpec>of() : spec.oids()) {
@@ -77,7 +77,7 @@ public class SnmpCollectionRunner {
             if (points.isEmpty()) {
                 return false;
             }
-            CollectionGroupTargetSpec resolveTarget = new CollectionGroupTargetSpec(
+            SnmpCollectionTargetSpec resolveTarget = new SnmpCollectionTargetSpec(
                     target.deviceId(),
                     target.host(),
                     target.port(),

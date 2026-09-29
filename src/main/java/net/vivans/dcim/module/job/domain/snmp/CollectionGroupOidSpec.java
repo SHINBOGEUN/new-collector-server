@@ -1,4 +1,4 @@
-package net.vivans.dcim.module.job.domain;
+package net.vivans.dcim.module.job.domain.snmp;
 
 public record CollectionGroupOidSpec(
         String name,

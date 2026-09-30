@@ -12,14 +12,24 @@ public record CollectionGroupModbusPointSpec(
         Integer address,
         ModbusDataType dataType,
         ModbusByteOrder byteOrder,
-        Double scale
+        Double scale,
+        Double offset
 ) {
+    public CollectionGroupModbusPointSpec(String name, ModbusRegisterType registerType, Integer address,
+                                          ModbusDataType dataType, ModbusByteOrder byteOrder, Double scale) {
+        this(name, registerType, address, dataType, byteOrder, scale, null);
+    }
 
     /**
      * 배율 생략 또는 null은 1로 해석한다.
      */
     public double effectiveScale() {
         return scale == null ? 1.0 : scale;
+    }
+
+    /** 최종값 = 원시값 × scale + offset. */
+    public double effectiveOffset() {
+        return offset == null ? 0.0 : offset;
     }
 
     /**

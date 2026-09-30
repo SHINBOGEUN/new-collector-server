@@ -120,10 +120,16 @@ public class ModbusSpecValidator {
         if (!Double.isFinite(point.effectiveScale())) {
             throw invalid(path, "scale must be finite");
         }
+        if (!Double.isFinite(point.effectiveOffset())) {
+            throw invalid(path, "offset must be finite");
+        }
 
         // 비트 읽기는 한 주소에서 비트 하나를 읽는다.
         // dataType과 byteOrder를 이용한 레지스터 해석은 하지 않는다.
         if (point.registerType().isBitType()) {
+            if (point.effectiveOffset() != 0.0) {
+                throw invalid(path, "offset is not supported for bit reads");
+            }
             return;
         }
 

@@ -15,4 +15,10 @@ public class NoOpMqttPublisher implements MqttPublisher {
     public void publishSensorReading(int taskId, int groupId, int deviceId, Map<String, Object> values) {
         log.debug("MQTT 비활성, skip device:{}", deviceId);
     }
+
+    @Override
+    public void publishSensorReading(int taskId, int groupId, int deviceId,
+                                     Map<String, Object> values, String protocol) {
+        log.debug("MQTT 비활성, skip protocol={} device:{}", protocol, deviceId);
+    }
 }

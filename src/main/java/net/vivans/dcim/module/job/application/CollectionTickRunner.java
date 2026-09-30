@@ -2,6 +2,9 @@ package net.vivans.dcim.module.job.application;
 
 import lombok.extern.slf4j.Slf4j;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionTargetSpec;
+import net.vivans.dcim.module.job.domain.modbus.ModbusPointResolver;
 import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
@@ -19,22 +22,26 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 @Slf4j
 @Component
 public class CollectionTickRunner {
 
     private final SnmpCollectionRunner snmpCollectionRunner;
+    private final ModbusCollectionRunner modbusCollectionRunner;
     private final ExecutorService executor = Executors.newCachedThreadPool(r -> {
         Thread thread = new Thread(r);
-        thread.setName("collector-snmp-" + thread.getId());
+        thread.setName("collector-regular-" + thread.getId());
         thread.setDaemon(true);
         return thread;
     });
     private final ConcurrentHashMap<Integer, AtomicBoolean> liveTargetRunning = new ConcurrentHashMap<>();
 
-    public CollectionTickRunner(SnmpCollectionRunner snmpCollectionRunner) {
+    public CollectionTickRunner(SnmpCollectionRunner snmpCollectionRunner,
+                                ModbusCollectionRunner modbusCollectionRunner) {
         this.snmpCollectionRunner = snmpCollectionRunner;
+        this.modbusCollectionRunner = modbusCollectionRunner;
     }
 
     public void run(CollectionGroupSpec spec, AtomicBoolean running) {
@@ -43,7 +50,7 @@ public class CollectionTickRunner {
 
     /**
      * @param listener tick이 실제로 실행되어 완료되었을 때 결과를 통지받는다(등록된 job의
-     *                  최근 실패 시각/횟수/원인을 추적하는 용도). SNMP가 아니거나 대상이 없어
+     *                  최근 실패 시각/횟수/원인을 추적하는 용도). 미지원 프로토콜이거나 대상이 없어
      *                  건너뛴 tick에서는 호출되지 않는다.
      */
     public void run(CollectionGroupSpec spec, AtomicBoolean running, CollectionTickListener listener) {
@@ -77,12 +84,25 @@ public class CollectionTickRunner {
     }
 
     private CollectionTickSummary collect(CollectionGroupSpec spec) {
-        if (!(spec instanceof SnmpCollectionGroupSpec snmpSpec)) {
-            log.debug("SNMP가 아닌 프로토콜은 실행하지 않습니다. groupId={} protocol={}", spec.groupId(), spec.protocol());
+        List<Supplier<CollectionTargetResult>> work = new ArrayList<>();
+        int maxRequestsPerTarget = 1;
+        if (spec instanceof SnmpCollectionGroupSpec snmpSpec) {
+            for (SnmpCollectionTargetSpec target : snmpSpec.targets() == null
+                    ? List.<SnmpCollectionTargetSpec>of() : snmpSpec.targets()) {
+                work.add(() -> snmpCollectionRunner.collectTarget(snmpSpec, target));
+            }
+        } else if (spec instanceof ModbusCollectionGroupSpec modbusSpec) {
+            for (ModbusCollectionTargetSpec target : modbusSpec.targets() == null
+                    ? List.<ModbusCollectionTargetSpec>of() : modbusSpec.targets()) {
+                work.add(() -> modbusCollectionRunner.collectTarget(modbusSpec, target));
+                maxRequestsPerTarget = Math.max(maxRequestsPerTarget,
+                        ModbusPointResolver.resolve(modbusSpec, target).size());
+            }
+        } else {
+            log.debug("지원하지 않는 수집 프로토콜 groupId={} protocol={}", spec.groupId(), spec.protocol());
             return null;
         }
-        List<SnmpCollectionTargetSpec> targets = snmpSpec.targets() == null ? List.of() : snmpSpec.targets();
-        if (targets.isEmpty()) {
+        if (work.isEmpty()) {
             log.debug("수집 대상이 없습니다. groupId={}", spec.groupId());
             return null;
         }
@@ -94,11 +114,13 @@ public class CollectionTickRunner {
         AtomicInteger failureCount = new AtomicInteger();
         AtomicReference<String> lastFailureReason = new AtomicReference<>();
 
-        for (SnmpCollectionTargetSpec target : targets) {
+        for (Supplier<CollectionTargetResult> targetWork : work) {
             futures.add(CompletableFuture.runAsync(() -> {
+                boolean acquired = false;
                 try {
                     semaphore.acquire();
-                    CollectionTargetResult result = snmpCollectionRunner.collectTarget(snmpSpec, target);
+                    acquired = true;
+                    CollectionTargetResult result = targetWork.get();
                     if (result.success()) {
                         successCount.incrementAndGet();
                     } else {
@@ -109,15 +131,23 @@ public class CollectionTickRunner {
                     Thread.currentThread().interrupt();
                     failureCount.incrementAndGet();
                     lastFailureReason.set("interrupted: " + ex.getMessage());
+                } catch (Exception ex) {
+                    failureCount.incrementAndGet();
+                    lastFailureReason.set("collection error: " + ex.getMessage());
                 } finally {
-                    semaphore.release();
+                    if (acquired) {
+                        semaphore.release();
+                    }
                 }
             }, executor));
         }
 
         try {
+            long timeoutPerTarget = Math.max(spec.timeoutMs(), 1) * 4L
+                    * Math.max(spec.retries() + 1L, 1L) * maxRequestsPerTarget;
+            long waitMillis = Math.min(timeoutPerTarget * work.size(), TimeUnit.HOURS.toMillis(1));
             CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
-                    .get(Math.max(spec.timeoutMs(), 1) * 4L * targets.size(), TimeUnit.MILLISECONDS);
+                    .get(waitMillis, TimeUnit.MILLISECONDS);
         } catch (Exception ex) {
             log.warn(
                     "그룹 tick 대기 중 오류 taskId={} groupId={}: {}",
@@ -129,7 +159,7 @@ public class CollectionTickRunner {
         }
 
         CollectionTickSummary summary = new CollectionTickSummary(
-                targets.size(), successCount.get(), failureCount.get(), lastFailureReason.get());
+                work.size(), successCount.get(), failureCount.get(), lastFailureReason.get());
         logTickSummary(spec, summary.total(), summary.success(), summary.failed());
         return summary;
     }

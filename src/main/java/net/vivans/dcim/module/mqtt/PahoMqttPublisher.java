@@ -80,6 +80,19 @@ public class PahoMqttPublisher implements MqttPublisher {
 
     @Override
     public void publishSensorReading(int taskId, int groupId, int deviceId, Map<String, Object> values) {
+        publishRegularReading(deviceId, values, null, false);
+    }
+
+    @Override
+    public void publishSensorReading(int taskId, int groupId, int deviceId,
+                                     Map<String, Object> values, String protocol) {
+        if (!"snmp".equals(protocol) && !"modbus".equals(protocol)) {
+            throw new IllegalArgumentException("unsupported collection protocol: " + protocol);
+        }
+        publishRegularReading(deviceId, values, "snmp".equals(protocol) ? null : protocol, true);
+    }
+
+    private void publishRegularReading(int deviceId, Map<String, Object> values, String protocol, boolean strict) {
         if (!enabled) {
             return;
         }
@@ -87,9 +100,12 @@ public class PahoMqttPublisher implements MqttPublisher {
             ensureConnected();
             if (client == null || !client.isConnected()) {
                 log.warn("MQTT 미연결, device:{} 값을 건너뜁니다.", deviceId);
+                if (strict) {
+                    throw new IllegalStateException("MQTT is not connected");
+                }
                 return;
             }
-            byte[] body = objectMapper.writeValueAsBytes(buildPayload(deviceId, values, LocalDateTime.now()));
+            byte[] body = objectMapper.writeValueAsBytes(buildPayload(deviceId, values, protocol, LocalDateTime.now()));
             MqttMessage message = new MqttMessage(body);
             message.setQos(0);
             message.setRetained(false);
@@ -97,6 +113,9 @@ public class PahoMqttPublisher implements MqttPublisher {
             log.debug("MQTT publish device:{} topic={}", deviceId, topic);
         } catch (Exception ex) {
             log.warn("MQTT publish 실패 device:{}: {}", deviceId, ex.getMessage());
+            if (strict) {
+                throw new IllegalStateException("MQTT publish failed for deviceId=" + deviceId, ex);
+            }
         }
     }
 
@@ -160,10 +179,18 @@ public class PahoMqttPublisher implements MqttPublisher {
     }
 
     static Map<String, Object> buildPayload(int deviceId, Map<String, Object> values, LocalDateTime collectedAt) {
+        return buildPayload(deviceId, values, null, collectedAt);
+    }
+
+    static Map<String, Object> buildPayload(int deviceId, Map<String, Object> values,
+                                            String protocol, LocalDateTime collectedAt) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("datetime", collectedAt.format(DATETIME));
         payload.put("data", Map.of(String.valueOf(deviceId), values));
         payload.put("type", "schedule");
+        if (protocol != null) {
+            payload.put("protocol", protocol);
+        }
         return payload;
     }
 

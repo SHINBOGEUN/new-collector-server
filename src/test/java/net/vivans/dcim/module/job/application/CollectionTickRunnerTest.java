@@ -23,20 +23,25 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class CollectionTickRunnerTest {
 
     @Test
-    void modbusSpecDoesNotEnterSnmpRunner() {
+    void modbusSpecUsesModbusRunnerWithoutEnteringSnmpRunner() {
         SnmpCollectionRunner snmpRunner = mock(SnmpCollectionRunner.class);
-        CollectionTickRunner runner = new CollectionTickRunner(snmpRunner);
+        ModbusCollectionRunner modbusRunner = mock(ModbusCollectionRunner.class);
+        CollectionTickRunner runner = new CollectionTickRunner(snmpRunner, modbusRunner);
+        var target = new ModbusCollectionTargetSpec(17, "host", 502, 0, List.of());
         var spec = new ModbusCollectionGroupSpec(
                 1, 2, 3, "modbus", "0 * * * * *", 2000, 1, 10, null,
-                List.of(new ModbusCollectionTargetSpec(
-                        17, "host", 502, 0, List.of())), List.of());
+                List.of(target), List.of());
+        when(modbusRunner.collectTarget(spec, target)).thenReturn(new CollectionTargetResult(true, null));
         AtomicBoolean running = new AtomicBoolean(false);
         runner.run(spec, running);
+        verify(modbusRunner).collectTarget(spec, target);
         verifyNoInteractions(snmpRunner);
         assertThat(running.get()).isFalse();
     }
@@ -54,7 +59,8 @@ class CollectionTickRunnerTest {
         AtomicInteger published = new AtomicInteger();
         MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> published.incrementAndGet();
         CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
-                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())),
+                mock(ModbusCollectionRunner.class));
 
         CollectionGroupSpec spec = spec(
                 List.of(
@@ -87,7 +93,8 @@ class CollectionTickRunnerTest {
         AtomicInteger published = new AtomicInteger();
         MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> published.incrementAndGet();
         CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
-                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())),
+                mock(ModbusCollectionRunner.class));
         CollectionGroupSpec spec = spec(List.of(new SnmpCollectionTargetSpec(1, "host", 161, null)));
         AtomicBoolean running = new AtomicBoolean(false);
 
@@ -128,7 +135,8 @@ class CollectionTickRunnerTest {
             }
         };
         CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
-                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())),
+                mock(ModbusCollectionRunner.class));
 
         runner.runLive(
                 new LiveCollectionSpec(
@@ -198,7 +206,8 @@ class CollectionTickRunnerTest {
             }
         };
         CollectionTickRunner runner = new CollectionTickRunner(new SnmpCollectionRunner(
-                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())));
+                snmp, mqtt, new OidTemplateResolver(), new CollectionMetrics(new SimpleMeterRegistry())),
+                mock(ModbusCollectionRunner.class));
 
         long startedAt = System.nanoTime();
         runner.runLive(

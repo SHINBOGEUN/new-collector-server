@@ -28,6 +28,17 @@ class MqttPayloadFormatTest {
         assertThat(json).doesNotContain("device:9");
         assertThat(json).doesNotContain("taskId");
         assertThat(json).doesNotContain("groupId");
+        assertThat(payload).doesNotContainKey("protocol");
+    }
+
+    @Test
+    void modbusPayloadUsesExistingEnvelopeAndAddsProtocol() {
+        var payload = PahoMqttPublisher.buildPayload(101, Map.of("POWER", 1250.5),
+                "modbus", LocalDateTime.of(2026, 9, 30, 12, 34, 56));
+
+        assertThat(payload.get("type")).isEqualTo("schedule");
+        assertThat(payload.get("protocol")).isEqualTo("modbus");
+        assertThat(payload.get("data")).isEqualTo(Map.of("101", Map.of("POWER", 1250.5)));
     }
 
     @Test

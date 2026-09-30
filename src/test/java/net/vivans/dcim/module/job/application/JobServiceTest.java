@@ -52,7 +52,8 @@ class JobServiceTest {
                 metrics
         );
 
-        CollectionTickRunner tickRunner = new CollectionTickRunner(snmpRunner);
+        CollectionTickRunner tickRunner = new CollectionTickRunner(snmpRunner,
+                org.mockito.Mockito.mock(ModbusCollectionRunner.class));
         PueTickRunner pueTickRunner = new PueTickRunner(snmp, mqtt);
 
         // 4. 공통 검증기와 프로토콜별 검증기 구성

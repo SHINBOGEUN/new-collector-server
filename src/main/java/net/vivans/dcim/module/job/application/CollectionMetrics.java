@@ -12,10 +12,10 @@ public class CollectionMetrics {
 
     public CollectionMetrics(MeterRegistry meterRegistry) {
         this.successCounter = Counter.builder("collector.collection.device.success")
-                .description("Successful SNMP device collections")
+                .description("Successful device collections")
                 .register(meterRegistry);
         this.failureCounter = Counter.builder("collector.collection.device.failure")
-                .description("Failed SNMP device collections")
+                .description("Failed device collections")
                 .register(meterRegistry);
     }
 

@@ -1,5 +1,7 @@
 package net.vivans.dcim.module.job.domain.modbus;
 
+import java.util.List;
+
 /**
  * Modbus 수집 항목 하나.
  *
@@ -13,11 +15,18 @@ public record CollectionGroupModbusPointSpec(
         ModbusDataType dataType,
         ModbusByteOrder byteOrder,
         Double scale,
-        Double offset
+        Double offset,
+        List<ModbusBitFieldSpec> bitFields
 ) {
     public CollectionGroupModbusPointSpec(String name, ModbusRegisterType registerType, Integer address,
+                                          ModbusDataType dataType, ModbusByteOrder byteOrder, Double scale,
+                                          Double offset) {
+        this(name, registerType, address, dataType, byteOrder, scale, offset, List.of());
+    }
+
+    public CollectionGroupModbusPointSpec(String name, ModbusRegisterType registerType, Integer address,
                                           ModbusDataType dataType, ModbusByteOrder byteOrder, Double scale) {
-        this(name, registerType, address, dataType, byteOrder, scale, null);
+        this(name, registerType, address, dataType, byteOrder, scale, null, List.of());
     }
 
     /**

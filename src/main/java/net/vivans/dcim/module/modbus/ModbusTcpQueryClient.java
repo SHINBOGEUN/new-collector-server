@@ -1,6 +1,7 @@
 package net.vivans.dcim.module.modbus;
 
 import net.vivans.dcim.module.job.domain.modbus.CollectionGroupModbusPointSpec;
+import net.vivans.dcim.module.job.domain.modbus.ModbusBitFieldSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusRegisterType;
 import org.springframework.stereotype.Component;
@@ -32,7 +33,14 @@ public class ModbusTcpQueryClient implements ModbusQueryClient {
                 Map<String, Object> values = new LinkedHashMap<>();
                 int transactionId = 0;
                 for (CollectionGroupModbusPointSpec point : points) {
-                    values.put(point.name(), readPoint(input, output, target.unitId(), ++transactionId, point));
+                    Number value = readPoint(input, output, target.unitId(), ++transactionId, point);
+                    values.put(point.name(), value);
+                    if (point.bitFields() != null) {
+                        for (ModbusBitFieldSpec field : point.bitFields()) {
+                            values.put(field.name(), ModbusBitFieldDecoder.decode(value,
+                                    point.dataType().getRegisterCount() * 16, field));
+                        }
+                    }
                 }
                 return values;
             } catch (IOException exception) {

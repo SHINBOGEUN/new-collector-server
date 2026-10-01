@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.data.Offset.offset;
 
 class ModbusValueDecoderTest {
 
@@ -33,7 +34,7 @@ class ModbusValueDecoderTest {
         var temperature = new CollectionGroupModbusPointSpec("IN-TEMP", ModbusRegisterType.INPUT, 0,
                 ModbusDataType.UINT16, null, 0.1, -50.0);
         assertThat(ModbusValueDecoder.decode(temperature, new byte[]{0x02, (byte) 0xfe}).doubleValue())
-                .isEqualTo(26.6);
+                .isCloseTo(26.6, offset(1e-9));
     }
 
     @Test

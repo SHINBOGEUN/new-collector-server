@@ -1,6 +1,7 @@
 package net.vivans.dcim.module.job.application;
 
 import net.vivans.dcim.module.job.domain.modbus.CollectionGroupModbusPointSpec;
+import net.vivans.dcim.module.job.domain.modbus.ModbusBitFieldSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusByteOrder;
@@ -9,6 +10,7 @@ import net.vivans.dcim.module.job.domain.modbus.ModbusRegisterType;
 import org.junit.jupiter.api.Test;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -73,6 +75,22 @@ class ModbusSpecValidatorTest {
             checkPoint(new CollectionGroupModbusPointSpec("BIT", registerType, 65535,
                     ModbusDataType.FLOAT32, null, null), true);
         }
+    }
+
+    @Test
+    void validatesDerivedBitRangesAndNames() {
+        var valid = new CollectionGroupModbusPointSpec("RAW", ModbusRegisterType.HOLDING, 0,
+                ModbusDataType.UINT16, null, null, null,
+                List.of(new ModbusBitFieldSpec("VALVE", 8, 2, Map.of("2", 1L), -1L)));
+        checkPoint(valid, true);
+        var invalidRange = new CollectionGroupModbusPointSpec("RAW", ModbusRegisterType.HOLDING, 0,
+                ModbusDataType.UINT16, null, null, null,
+                List.of(new ModbusBitFieldSpec("VALVE", 15, 2, Map.of(), null)));
+        checkPoint(invalidRange, false);
+        var duplicateName = new CollectionGroupModbusPointSpec("RAW", ModbusRegisterType.HOLDING, 0,
+                ModbusDataType.UINT16, null, null, null,
+                List.of(new ModbusBitFieldSpec("RAW", 0, 1, Map.of(), null)));
+        checkPoint(duplicateName, false);
     }
 
     @Test

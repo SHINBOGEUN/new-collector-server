@@ -5,6 +5,7 @@ import net.vivans.dcim.module.job.api.dto.ModbusReadPreviewRequest;
 import net.vivans.dcim.module.job.api.dto.ModbusReadPreviewResponse;
 import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionTargetSpec;
+import net.vivans.dcim.module.modbus.ModbusPartialReadException;
 import net.vivans.dcim.module.modbus.ModbusQueryClient;
 import org.springframework.stereotype.Service;
 
@@ -40,6 +41,10 @@ public class ModbusReadPreviewService {
                         request.timeoutMs(), request.retries());
                 results.add(new ModbusReadPreviewResponse.TargetResult(target.deviceId(), target.host(),
                         target.port(), target.unitId(), values, null, (System.nanoTime() - start) / 1_000_000));
+            } catch (ModbusPartialReadException exception) {
+                results.add(new ModbusReadPreviewResponse.TargetResult(target.deviceId(), target.host(),
+                        target.port(), target.unitId(), exception.values(), exception.getMessage(),
+                        (System.nanoTime() - start) / 1_000_000));
             } catch (Exception exception) {
                 String reason = exception.getMessage() == null || exception.getMessage().isBlank()
                         ? exception.getClass().getSimpleName() : exception.getMessage();

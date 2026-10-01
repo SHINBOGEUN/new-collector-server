@@ -6,6 +6,7 @@ import net.vivans.dcim.module.job.domain.modbus.CollectionGroupModbusPointSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusPointResolver;
+import net.vivans.dcim.module.modbus.ModbusPartialReadException;
 import net.vivans.dcim.module.modbus.ModbusQueryClient;
 import net.vivans.dcim.module.mqtt.MqttPublisher;
 import org.springframework.stereotype.Component;
@@ -29,8 +30,25 @@ public class ModbusCollectionRunner {
             return new CollectionTargetResult(false, "deviceId=" + target.deviceId() + " has no Modbus points");
         }
         try {
-            Map<String, Object> values = modbusQueryClient.read(target, points, spec.timeoutMs(), spec.retries());
-            mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), values, "modbus");
+            ModbusPartialReadException partialFailure = null;
+            Map<String, Object> values;
+            try {
+                values = modbusQueryClient.read(target, points, spec.timeoutMs(), spec.retries());
+            } catch (ModbusPartialReadException exception) {
+                partialFailure = exception;
+                values = exception.values();
+            }
+            if (!values.isEmpty()) {
+                mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), values, "modbus");
+            }
+            if (partialFailure != null) {
+                collectionMetrics.recordFailure();
+                String reason = "deviceId=" + target.deviceId() + " host=" + target.host() + ":" + target.port()
+                        + " unitId=" + target.unitId() + " " + partialFailure.getMessage();
+                log.warn("[MODBUS_COLLECT_PARTIAL] taskId={} groupId={} publishedPoints={} {}",
+                        spec.taskId(), spec.groupId(), values.size(), reason);
+                return new CollectionTargetResult(false, reason);
+            }
             collectionMetrics.recordSuccess();
             return new CollectionTargetResult(true, null);
         } catch (Exception exception) {

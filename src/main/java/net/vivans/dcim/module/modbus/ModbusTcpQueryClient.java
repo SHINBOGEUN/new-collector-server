@@ -23,31 +23,71 @@ public class ModbusTcpQueryClient implements ModbusQueryClient {
     @Override
     public Map<String, Object> read(ModbusCollectionTargetSpec target, List<CollectionGroupModbusPointSpec> points,
                                     int timeoutMs, int retries) throws IOException {
-        IOException lastFailure = null;
-        for (int attempt = 0; attempt <= Math.max(retries, 0); attempt++) {
-            try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress(target.host(), target.port()), Math.max(timeoutMs, 1));
-                socket.setSoTimeout(Math.max(timeoutMs, 1));
-                DataInputStream input = new DataInputStream(socket.getInputStream());
-                DataOutputStream output = new DataOutputStream(socket.getOutputStream());
-                Map<String, Object> values = new LinkedHashMap<>();
-                int transactionId = 0;
-                for (CollectionGroupModbusPointSpec point : points) {
-                    Number value = readPoint(input, output, target.unitId(), ++transactionId, point);
-                    values.put(point.name(), value);
-                    if (point.bitFields() != null) {
-                        for (ModbusBitFieldSpec field : point.bitFields()) {
-                            values.put(field.name(), ModbusBitFieldDecoder.decode(value,
-                                    point.dataType().getRegisterCount() * 16, field));
+        Map<String, Object> values = new LinkedHashMap<>();
+        Map<String, String> failures = new LinkedHashMap<>();
+        Socket socket = null;
+        int transactionId = 0;
+        try {
+            for (CollectionGroupModbusPointSpec point : points) {
+                Exception lastFailure = null;
+                for (int attempt = 0; attempt <= Math.max(retries, 0); attempt++) {
+                    try {
+                        if (socket == null) {
+                            socket = connect(target, timeoutMs);
                         }
+                        Number value = readPoint(new DataInputStream(socket.getInputStream()),
+                                new DataOutputStream(socket.getOutputStream()), target.unitId(),
+                                ++transactionId, point);
+                        Map<String, Object> pointValues = new LinkedHashMap<>();
+                        pointValues.put(point.name(), value);
+                        if (point.bitFields() != null) {
+                            for (ModbusBitFieldSpec field : point.bitFields()) {
+                                pointValues.put(field.name(), ModbusBitFieldDecoder.decode(value,
+                                        point.dataType().getRegisterCount() * 16, field));
+                            }
+                        }
+                        values.putAll(pointValues);
+                        lastFailure = null;
+                        break;
+                    } catch (IOException | RuntimeException exception) {
+                        lastFailure = exception;
+                        close(socket);
+                        socket = null;
                     }
                 }
-                return values;
-            } catch (IOException exception) {
-                lastFailure = exception;
+                if (lastFailure != null) {
+                    failures.put(point.name(), lastFailure.getMessage() == null
+                            ? lastFailure.getClass().getSimpleName() : lastFailure.getMessage());
+                }
             }
+        } finally {
+            close(socket);
         }
-        throw lastFailure;
+        if (!failures.isEmpty()) {
+            throw new ModbusPartialReadException(values, failures);
+        }
+        return values;
+    }
+
+    private static Socket connect(ModbusCollectionTargetSpec target, int timeoutMs) throws IOException {
+        Socket socket = new Socket();
+        try {
+            socket.connect(new InetSocketAddress(target.host(), target.port()), Math.max(timeoutMs, 1));
+            socket.setSoTimeout(Math.max(timeoutMs, 1));
+            return socket;
+        } catch (IOException exception) {
+            close(socket);
+            throw exception;
+        }
+    }
+
+    private static void close(Socket socket) {
+        if (socket == null) return;
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // 실패한 연결을 버리고 다음 point는 새 연결로 시도한다.
+        }
     }
 
     private static Number readPoint(DataInputStream input, DataOutputStream output, int unitId,

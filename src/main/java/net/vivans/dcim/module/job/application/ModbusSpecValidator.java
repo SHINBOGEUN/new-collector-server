@@ -62,6 +62,15 @@ public class ModbusSpecValidator {
                                     + ": " + point.name()
                     );
                 }
+                if (point.bitFields() != null) {
+                    for (ModbusBitFieldSpec field : point.bitFields()) {
+                        validateBitField(point, field, pointPath);
+                        if (!names.add(field.name())) {
+                            throw invalid(pointPath, "duplicate derived point name for deviceId="
+                                    + target.deviceId() + ": " + field.name());
+                        }
+                    }
+                }
             }
         }
     }
@@ -141,6 +150,34 @@ public class ModbusSpecValidator {
         }
 
         validateByteOrder(point, path);
+    }
+
+    private void validateBitField(CollectionGroupModbusPointSpec point, ModbusBitFieldSpec field, String path) {
+        if (field == null) throw invalid(path, "bit field is required");
+        validateName(field.name(), path);
+        if (point.registerType().isBitType() || point.dataType() == ModbusDataType.FLOAT32
+                || point.effectiveScale() != 1.0 || point.effectiveOffset() != 0.0) {
+            throw invalid(path, "bit fields require an unscaled integer register point");
+        }
+        int bits = point.dataType().getRegisterCount() * 16;
+        if (field.bitOffset() < 0 || field.bitWidth() < 1 || field.bitWidth() > 32
+                || (long) field.bitOffset() + field.bitWidth() > bits) {
+            throw invalid(path, "bit range exceeds source register width");
+        }
+        if (field.valueMap() != null) {
+            long max = (1L << field.bitWidth()) - 1;
+            for (String key : field.valueMap().keySet()) {
+                try {
+                    long code = Long.parseLong(key);
+                    if (code < 0 || code > max || !Long.toString(code).equals(key)
+                            || field.valueMap().get(key) == null) {
+                        throw invalid(path, "invalid bit value mapping: " + key);
+                    }
+                } catch (NumberFormatException exception) {
+                    throw invalid(path, "invalid bit value mapping: " + key);
+                }
+            }
+        }
     }
 
     private void validateName(String name, String path) {

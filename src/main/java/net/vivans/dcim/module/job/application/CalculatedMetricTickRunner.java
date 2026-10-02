@@ -2,8 +2,8 @@ package net.vivans.dcim.module.job.application;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import net.vivans.dcim.module.job.domain.PueCollectionSourceSpec;
-import net.vivans.dcim.module.job.domain.PueCollectionSpec;
+import net.vivans.dcim.module.job.domain.CalculatedMetricCollectionSourceSpec;
+import net.vivans.dcim.module.job.domain.CalculatedMetricCollectionSpec;
 import net.vivans.dcim.module.job.domain.FormulaExpression;
 import net.vivans.dcim.module.job.domain.modbus.ModbusCollectionTargetSpec;
 import net.vivans.dcim.module.modbus.ModbusQueryClient;
@@ -23,16 +23,16 @@ import java.util.function.BiConsumer;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class PueTickRunner {
+public class CalculatedMetricTickRunner {
     private final SnmpQueryClient snmp;
     private final ModbusQueryClient modbus;
     private final MqttPublisher mqtt;
 
-    public void run(PueCollectionSpec spec, AtomicBoolean running) {
+    public void run(CalculatedMetricCollectionSpec spec, AtomicBoolean running) {
         run(spec, running, (success, reason) -> {});
     }
 
-    public void run(PueCollectionSpec spec, AtomicBoolean running, BiConsumer<Boolean, String> onComplete) {
+    public void run(CalculatedMetricCollectionSpec spec, AtomicBoolean running, BiConsumer<Boolean, String> onComplete) {
         if (!running.compareAndSet(false, true)) {
             log.debug("[CALC_COLLECT_SKIP] definitionId={} reason=ALREADY_RUNNING", spec.calculatedMetricId());
             return;
@@ -77,7 +77,7 @@ public class PueTickRunner {
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
     }
 
-    private Reading read(PueCollectionSpec spec, PueCollectionSourceSpec source) {
+    private Reading read(CalculatedMetricCollectionSpec spec, CalculatedMetricCollectionSourceSpec source) {
         try {
             if ("modbus".equalsIgnoreCase(source.protocol())) {
                 if (source.unitId() == null || source.modbusPoint() == null) {

@@ -11,7 +11,7 @@ import net.vivans.dcim.module.job.api.dto.JobToggleRequest;
 import net.vivans.dcim.module.job.application.JobService;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
-import net.vivans.dcim.module.job.domain.PueCollectionSpec;
+import net.vivans.dcim.module.job.domain.CalculatedMetricCollectionSpec;
 import net.vivans.dcim.shared.api.ApiResponse;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,20 +61,20 @@ public class JobController {
 
     @PutMapping("/calculated-jobs/{definitionId}")
     @Operation(summary = "계산 지표 수집 job을 등록하거나 교체한다.")
-    public ApiResponse<Void> upsertPue(@PathVariable Integer definitionId, @RequestBody PueCollectionSpec spec) {
+    public ApiResponse<Void> upsertCalculated(@PathVariable Integer definitionId, @RequestBody CalculatedMetricCollectionSpec spec) {
         if (!definitionId.equals(spec.calculatedMetricId())) throw new IllegalArgumentException("definitionId mismatch");
-        jobService.upsertPue(spec);
+        jobService.upsertCalculated(spec);
         return ApiResponse.ok();
     }
 
     @DeleteMapping("/calculated-jobs/{definitionId}")
     @Operation(summary = "계산 지표 수집 job을 삭제한다.")
-    public ApiResponse<Void> deletePue(@PathVariable Integer definitionId) { jobService.deletePue(definitionId); return ApiResponse.ok(); }
+    public ApiResponse<Void> deleteCalculated(@PathVariable Integer definitionId) { jobService.deleteCalculated(definitionId); return ApiResponse.ok(); }
 
     @GetMapping("/calculated-jobs/{definitionId}")
     @Operation(summary = "계산 지표 수집 job의 현재 실행 상태")
-    public ApiResponse<CalculatedJobStatusResponse> getPueStatus(@PathVariable Integer definitionId) {
-        return ApiResponse.ok(jobService.getPueStatus(definitionId));
+    public ApiResponse<CalculatedJobStatusResponse> getCalculatedStatus(@PathVariable Integer definitionId) {
+        return ApiResponse.ok(jobService.getCalculatedStatus(definitionId));
     }
 
     @PutMapping("/jobs/{collectorJobId}")

@@ -32,7 +32,7 @@ public class JobService {
 
     private final ThreadPoolTaskScheduler scheduler;
     private final CollectionTickRunner tickRunner;
-    private final PueTickRunner tickRunnerPue;
+    private final CalculatedMetricTickRunner calculatedTickRunner;
     private final CollectionSpecValidator collectionSpecValidator;
     private final Map<String, RegisteredJob> jobs = new ConcurrentHashMap<>();
     private final Map<Integer, String> jobIdByGroupId = new ConcurrentHashMap<>();
@@ -42,7 +42,7 @@ public class JobService {
      * register 빈도가 낮은 관리 operation이라 단일 락으로도 충분하다(tick 실행 경로에는 영향 없음).
      */
     private final Object registrationLock = new Object();
-    private final Map<Integer, PueJob> pueJobs = new ConcurrentHashMap<>();
+    private final Map<Integer, CalculatedJob> calculatedJobs = new ConcurrentHashMap<>();
     private final String instanceId = UUID.randomUUID().toString();
     private final AtomicBoolean liveRunning = new AtomicBoolean(false);
     private final Object liveLock = new Object();
@@ -52,12 +52,12 @@ public class JobService {
     public JobService(
             @Qualifier("collectorTaskScheduler") ThreadPoolTaskScheduler scheduler,
             CollectionTickRunner tickRunner,
-            PueTickRunner tickRunnerPue,
+            CalculatedMetricTickRunner calculatedTickRunner,
             CollectionSpecValidator collectionSpecValidator
     ) {
         this.scheduler = scheduler;
         this.tickRunner = tickRunner;
-        this.tickRunnerPue = tickRunnerPue;
+        this.calculatedTickRunner = calculatedTickRunner;
         this.collectionSpecValidator = collectionSpecValidator;
     }
 
@@ -156,21 +156,21 @@ public class JobService {
 
     public int count() {
         int live = liveSpec == null ? 0 : 1;
-        return jobs.size() + pueJobs.size() + live;
+        return jobs.size() + calculatedJobs.size() + live;
     }
 
     public String getInstanceId() {
         return instanceId;
     }
 
-    public void upsertPue(net.vivans.dcim.module.job.domain.PueCollectionSpec spec) {
+    public void upsertCalculated(net.vivans.dcim.module.job.domain.CalculatedMetricCollectionSpec spec) {
         if (spec == null || spec.calculatedMetricId() == null || spec.cronExpression() == null
                 || spec.sources() == null || spec.sources().isEmpty() || spec.formula() == null || spec.formula().isBlank()) {
             throw new IllegalArgumentException("valid calculated metric spec is required");
         }
         {
             var references = net.vivans.dcim.module.job.domain.FormulaExpression.references(spec.formula());
-            var aliases = spec.sources().stream().map(net.vivans.dcim.module.job.domain.PueCollectionSourceSpec::alias).toList();
+            var aliases = spec.sources().stream().map(net.vivans.dcim.module.job.domain.CalculatedMetricCollectionSourceSpec::alias).toList();
             if (aliases.size() > 32 || aliases.stream().anyMatch(alias -> alias == null || alias.isBlank())
                     || aliases.stream().distinct().count() != aliases.size() || !references.equals(java.util.Set.copyOf(aliases))) {
                 throw new IllegalArgumentException("formula aliases must match exactly 1-32 SNMP/Modbus sources");
@@ -184,7 +184,7 @@ public class JobService {
         log.info("[CALCULATED_JOB_START] action=UPSERT definitionId={} sourceCount={} cron={}",
                 spec.calculatedMetricId(), spec.sources().size(), spec.cronExpression());
         try {
-            PueJob job = pueJobs.computeIfAbsent(spec.calculatedMetricId(), ignored -> new PueJob());
+            CalculatedJob job = calculatedJobs.computeIfAbsent(spec.calculatedMetricId(), ignored -> new CalculatedJob());
             if (job.future != null) {
                 job.future.cancel(false);
             }
@@ -195,30 +195,30 @@ public class JobService {
             job.future = scheduler.schedule(
                     () -> {
                         var currentSpec = job.spec;
-                        tickRunnerPue.run(currentSpec, job.running,
+                        calculatedTickRunner.run(currentSpec, job.running,
                                 (success, reason) -> job.recordTickResult(currentSpec.configVersion(), success, reason));
                     },
                     new CronTrigger(spec.cronExpression(), ZoneId.systemDefault())
             );
             log.info("[CALCULATED_JOB_END] action=UPSERT definitionId={} activeJobCount={}",
-                    spec.calculatedMetricId(), pueJobs.size());
+                    spec.calculatedMetricId(), calculatedJobs.size());
         } catch (RuntimeException exception) {
             log.warn("[CALCULATED_JOB_ERROR] action=UPSERT definitionId={} exception={} message={}",
                     spec.calculatedMetricId(), exception.getClass().getSimpleName(), exception.getMessage());
             throw exception;
         }
     }
-    public void deletePue(Integer definitionId) {
+    public void deleteCalculated(Integer definitionId) {
         log.info("[CALCULATED_JOB_START] action=DELETE definitionId={}", definitionId);
-        PueJob job = pueJobs.remove(definitionId);
+        CalculatedJob job = calculatedJobs.remove(definitionId);
         if (job != null && job.future != null) {
             job.future.cancel(false);
         }
         log.info("[CALCULATED_JOB_END] action=DELETE definitionId={} removed={}", definitionId, job != null);
     }
 
-    public CalculatedJobStatusResponse getPueStatus(Integer definitionId) {
-        PueJob job = pueJobs.get(definitionId);
+    public CalculatedJobStatusResponse getCalculatedStatus(Integer definitionId) {
+        CalculatedJob job = calculatedJobs.get(definitionId);
         if (job == null || job.spec == null) return null;
         return new CalculatedJobStatusResponse(definitionId, job.spec.configVersion(), job.running.get(),
                 job.lastSuccessAt, job.lastFailureAt, job.consecutiveFailureCount.get(), job.lastFailureReason);
@@ -402,10 +402,10 @@ public class JobService {
             return lastSuccessAt;
         }
     }
-    static final class PueJob {
+    static final class CalculatedJob {
         private final AtomicBoolean running = new AtomicBoolean(false);
         private final AtomicInteger consecutiveFailureCount = new AtomicInteger();
-        private volatile net.vivans.dcim.module.job.domain.PueCollectionSpec spec;
+        private volatile net.vivans.dcim.module.job.domain.CalculatedMetricCollectionSpec spec;
         private volatile ScheduledFuture<?> future;
         private volatile Instant lastSuccessAt;
         private volatile Instant lastFailureAt;

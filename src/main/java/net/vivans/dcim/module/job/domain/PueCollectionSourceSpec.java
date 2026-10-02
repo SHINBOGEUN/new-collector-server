@@ -1,2 +1,9 @@
 package net.vivans.dcim.module.job.domain;
-public record PueCollectionSourceSpec(Integer deviceId, String host, int port, String pointName, String oid, Double scale, String role) {}
+import net.vivans.dcim.module.job.domain.modbus.CollectionGroupModbusPointSpec;
+public record PueCollectionSourceSpec(Integer deviceId, String host, int port, String pointName, String oid, Double scale,
+                                      String role, String alias, String protocol, Integer unitId,
+                                      CollectionGroupModbusPointSpec modbusPoint) {
+    public PueCollectionSourceSpec(Integer deviceId, String host, int port, String pointName, String oid, Double scale, String role) {
+        this(deviceId, host, port, pointName, oid, scale, role, null, "snmp", null, null);
+    }
+}

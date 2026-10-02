@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import net.vivans.dcim.module.job.api.dto.HealthResponse;
 import net.vivans.dcim.module.job.api.dto.JobResponse;
+import net.vivans.dcim.module.job.api.dto.CalculatedJobStatusResponse;
 import net.vivans.dcim.module.job.api.dto.JobToggleRequest;
 import net.vivans.dcim.module.job.application.JobService;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
@@ -69,6 +70,12 @@ public class JobController {
     @DeleteMapping("/pue-jobs/{definitionId}")
     @Operation(summary = "PUE 파생 수집 job을 삭제한다.")
     public ApiResponse<Void> deletePue(@PathVariable Integer definitionId) { jobService.deletePue(definitionId); return ApiResponse.ok(); }
+
+    @GetMapping("/pue-jobs/{definitionId}")
+    @Operation(summary = "계산 지표 수집 job의 현재 실행 상태")
+    public ApiResponse<CalculatedJobStatusResponse> getPueStatus(@PathVariable Integer definitionId) {
+        return ApiResponse.ok(jobService.getPueStatus(definitionId));
+    }
 
     @PutMapping("/jobs/{collectorJobId}")
     @Operation(summary = "등록된 job의 spec을 교체하고 cron을 다시 건다.")

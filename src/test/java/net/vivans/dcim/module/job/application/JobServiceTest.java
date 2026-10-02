@@ -4,6 +4,8 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import net.vivans.dcim.module.job.api.dto.JobResponse;
 import net.vivans.dcim.module.job.domain.snmp.CollectionGroupOidSpec;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
+import net.vivans.dcim.module.job.domain.PueCollectionSpec;
+import net.vivans.dcim.module.job.domain.PueCollectionSourceSpec;
 import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.mqtt.MqttPublisher;
@@ -54,7 +56,8 @@ class JobServiceTest {
 
         CollectionTickRunner tickRunner = new CollectionTickRunner(snmpRunner,
                 org.mockito.Mockito.mock(ModbusCollectionRunner.class));
-        PueTickRunner pueTickRunner = new PueTickRunner(snmp, mqtt);
+        PueTickRunner pueTickRunner = new PueTickRunner(snmp,
+                org.mockito.Mockito.mock(net.vivans.dcim.module.modbus.ModbusQueryClient.class), mqtt);
 
         // 4. 공통 검증기와 프로토콜별 검증기 구성
         CollectionSpecValidator validator = new CollectionSpecValidator(
@@ -76,6 +79,25 @@ class JobServiceTest {
         if (scheduler != null) {
             scheduler.shutdown();
         }
+    }
+
+    @Test
+    void calculatedJobStatusIsSeparateFromRegularJobs() {
+        SnmpQueryClient snmp = (host, port, community, timeoutMs, retries, oids) -> Map.of("POWER", 42);
+        MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> { };
+        JobService jobService = newJobService(snmp, mqtt);
+        var source = new PueCollectionSourceSpec(7, "localhost", 161, "POWER", ".1.2.3", 1D,
+                null, "A", "snmp", null, null);
+        jobService.upsertPue(new PueCollectionSpec(12, 3, "0 0 0 1 1 *", "public", 1000, 0,
+                List.of(source), "A"));
+
+        assertThat(jobService.getPueStatus(12)).isNotNull();
+        assertThat(jobService.getPueStatus(12).configVersion()).isEqualTo(3);
+        assertThat(jobService.getPueStatus(12).lastSuccessAt()).isNull();
+        assertThat(jobService.list()).isEmpty();
+
+        jobService.deletePue(12);
+        assertThat(jobService.getPueStatus(12)).isNull();
     }
 
     @Test

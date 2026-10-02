@@ -2,6 +2,7 @@ package net.vivans.dcim.module.job.application;
 
 import lombok.extern.slf4j.Slf4j;
 import net.vivans.dcim.module.job.api.dto.JobResponse;
+import net.vivans.dcim.module.job.api.dto.CalculatedJobStatusResponse;
 import net.vivans.dcim.module.job.api.dto.JobToggleRequest;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
@@ -166,6 +167,19 @@ public class JobService {
         if (spec == null || spec.pueDefinitionId() == null || spec.cronExpression() == null || spec.sources() == null || spec.sources().isEmpty()) {
             throw new IllegalArgumentException("valid PUE spec is required");
         }
+        if (spec.formula() != null && !spec.formula().isBlank()) {
+            var references = net.vivans.dcim.module.job.domain.FormulaExpression.references(spec.formula());
+            var aliases = spec.sources().stream().map(net.vivans.dcim.module.job.domain.PueCollectionSourceSpec::alias).toList();
+            if (aliases.size() > 32 || aliases.stream().anyMatch(alias -> alias == null || alias.isBlank())
+                    || aliases.stream().distinct().count() != aliases.size() || !references.equals(java.util.Set.copyOf(aliases))) {
+                throw new IllegalArgumentException("formula aliases must match exactly 1-32 SNMP/Modbus sources");
+            }
+            for (var source : spec.sources()) {
+                if (!"snmp".equalsIgnoreCase(source.protocol()) && !"modbus".equalsIgnoreCase(source.protocol())) {
+                    throw new IllegalArgumentException("formula supports only SNMP and Modbus");
+                }
+            }
+        }
         log.info("[PUE_JOB_START] action=UPSERT definitionId={} sourceCount={} cron={}",
                 spec.pueDefinitionId(), spec.sources().size(), spec.cronExpression());
         try {
@@ -173,9 +187,16 @@ public class JobService {
             if (job.future != null) {
                 job.future.cancel(false);
             }
+            if (job.spec != null && !java.util.Objects.equals(job.spec.configVersion(), spec.configVersion())) {
+                job.clearResults();
+            }
             job.spec = spec;
             job.future = scheduler.schedule(
-                    () -> tickRunnerPue.run(job.spec, job.running),
+                    () -> {
+                        var currentSpec = job.spec;
+                        tickRunnerPue.run(currentSpec, job.running,
+                                (success, reason) -> job.recordTickResult(currentSpec.configVersion(), success, reason));
+                    },
                     new CronTrigger(spec.cronExpression(), ZoneId.systemDefault())
             );
             log.info("[PUE_JOB_END] action=UPSERT definitionId={} activePueJobCount={}",
@@ -193,6 +214,13 @@ public class JobService {
             job.future.cancel(false);
         }
         log.info("[PUE_JOB_END] action=DELETE definitionId={} removed={}", definitionId, job != null);
+    }
+
+    public CalculatedJobStatusResponse getPueStatus(Integer definitionId) {
+        PueJob job = pueJobs.get(definitionId);
+        if (job == null || job.spec == null) return null;
+        return new CalculatedJobStatusResponse(definitionId, job.spec.configVersion(), job.running.get(),
+                job.lastSuccessAt, job.lastFailureAt, job.consecutiveFailureCount.get(), job.lastFailureReason);
     }
 
     private void schedule(RegisteredJob job) {
@@ -373,5 +401,32 @@ public class JobService {
             return lastSuccessAt;
         }
     }
-    static final class PueJob { private final AtomicBoolean running=new AtomicBoolean(false); private volatile net.vivans.dcim.module.job.domain.PueCollectionSpec spec; private volatile ScheduledFuture<?> future; }
+    static final class PueJob {
+        private final AtomicBoolean running = new AtomicBoolean(false);
+        private final AtomicInteger consecutiveFailureCount = new AtomicInteger();
+        private volatile net.vivans.dcim.module.job.domain.PueCollectionSpec spec;
+        private volatile ScheduledFuture<?> future;
+        private volatile Instant lastSuccessAt;
+        private volatile Instant lastFailureAt;
+        private volatile String lastFailureReason;
+
+        void recordTickResult(Integer configVersion, boolean success, String reason) {
+            if (spec == null || !java.util.Objects.equals(spec.configVersion(), configVersion)) return;
+            if (success) {
+                lastSuccessAt = Instant.now();
+                consecutiveFailureCount.set(0);
+            } else {
+                lastFailureAt = Instant.now();
+                lastFailureReason = reason;
+                consecutiveFailureCount.incrementAndGet();
+            }
+        }
+
+        void clearResults() {
+            lastSuccessAt = null;
+            lastFailureAt = null;
+            lastFailureReason = null;
+            consecutiveFailureCount.set(0);
+        }
+    }
 }

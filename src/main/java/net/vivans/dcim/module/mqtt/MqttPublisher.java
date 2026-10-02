@@ -14,9 +14,6 @@ public interface MqttPublisher {
         publishSensorReading(taskId, groupId, deviceId, values);
     }
 
-    default void publishPueReading(int pueDefinitionId, int configVersion, double value, double totalPower, double coolerPower) {
-    }
-
     default void publishCalculatedReading(int definitionId, int configVersion, double value, Map<String, Double> inputs) {
         throw new UnsupportedOperationException("calculated MQTT payload is not supported");
     }

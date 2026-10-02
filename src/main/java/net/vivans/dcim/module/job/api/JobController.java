@@ -59,19 +59,19 @@ public class JobController {
         return ApiResponse.ok(jobService.register(spec));
     }
 
-    @PutMapping("/pue-jobs/{definitionId}")
-    @Operation(summary = "PUE 파생 수집 job을 등록하거나 교체한다.")
+    @PutMapping("/calculated-jobs/{definitionId}")
+    @Operation(summary = "계산 지표 수집 job을 등록하거나 교체한다.")
     public ApiResponse<Void> upsertPue(@PathVariable Integer definitionId, @RequestBody PueCollectionSpec spec) {
-        if (!definitionId.equals(spec.pueDefinitionId())) throw new IllegalArgumentException("definitionId mismatch");
+        if (!definitionId.equals(spec.calculatedMetricId())) throw new IllegalArgumentException("definitionId mismatch");
         jobService.upsertPue(spec);
         return ApiResponse.ok();
     }
 
-    @DeleteMapping("/pue-jobs/{definitionId}")
-    @Operation(summary = "PUE 파생 수집 job을 삭제한다.")
+    @DeleteMapping("/calculated-jobs/{definitionId}")
+    @Operation(summary = "계산 지표 수집 job을 삭제한다.")
     public ApiResponse<Void> deletePue(@PathVariable Integer definitionId) { jobService.deletePue(definitionId); return ApiResponse.ok(); }
 
-    @GetMapping("/pue-jobs/{definitionId}")
+    @GetMapping("/calculated-jobs/{definitionId}")
     @Operation(summary = "계산 지표 수집 job의 현재 실행 상태")
     public ApiResponse<CalculatedJobStatusResponse> getPueStatus(@PathVariable Integer definitionId) {
         return ApiResponse.ok(jobService.getPueStatus(definitionId));

@@ -164,10 +164,11 @@ public class JobService {
     }
 
     public void upsertPue(net.vivans.dcim.module.job.domain.PueCollectionSpec spec) {
-        if (spec == null || spec.pueDefinitionId() == null || spec.cronExpression() == null || spec.sources() == null || spec.sources().isEmpty()) {
-            throw new IllegalArgumentException("valid PUE spec is required");
+        if (spec == null || spec.calculatedMetricId() == null || spec.cronExpression() == null
+                || spec.sources() == null || spec.sources().isEmpty() || spec.formula() == null || spec.formula().isBlank()) {
+            throw new IllegalArgumentException("valid calculated metric spec is required");
         }
-        if (spec.formula() != null && !spec.formula().isBlank()) {
+        {
             var references = net.vivans.dcim.module.job.domain.FormulaExpression.references(spec.formula());
             var aliases = spec.sources().stream().map(net.vivans.dcim.module.job.domain.PueCollectionSourceSpec::alias).toList();
             if (aliases.size() > 32 || aliases.stream().anyMatch(alias -> alias == null || alias.isBlank())
@@ -180,10 +181,10 @@ public class JobService {
                 }
             }
         }
-        log.info("[PUE_JOB_START] action=UPSERT definitionId={} sourceCount={} cron={}",
-                spec.pueDefinitionId(), spec.sources().size(), spec.cronExpression());
+        log.info("[CALCULATED_JOB_START] action=UPSERT definitionId={} sourceCount={} cron={}",
+                spec.calculatedMetricId(), spec.sources().size(), spec.cronExpression());
         try {
-            PueJob job = pueJobs.computeIfAbsent(spec.pueDefinitionId(), ignored -> new PueJob());
+            PueJob job = pueJobs.computeIfAbsent(spec.calculatedMetricId(), ignored -> new PueJob());
             if (job.future != null) {
                 job.future.cancel(false);
             }
@@ -199,21 +200,21 @@ public class JobService {
                     },
                     new CronTrigger(spec.cronExpression(), ZoneId.systemDefault())
             );
-            log.info("[PUE_JOB_END] action=UPSERT definitionId={} activePueJobCount={}",
-                    spec.pueDefinitionId(), pueJobs.size());
+            log.info("[CALCULATED_JOB_END] action=UPSERT definitionId={} activeJobCount={}",
+                    spec.calculatedMetricId(), pueJobs.size());
         } catch (RuntimeException exception) {
-            log.warn("[PUE_JOB_ERROR] action=UPSERT definitionId={} exception={} message={}",
-                    spec.pueDefinitionId(), exception.getClass().getSimpleName(), exception.getMessage());
+            log.warn("[CALCULATED_JOB_ERROR] action=UPSERT definitionId={} exception={} message={}",
+                    spec.calculatedMetricId(), exception.getClass().getSimpleName(), exception.getMessage());
             throw exception;
         }
     }
     public void deletePue(Integer definitionId) {
-        log.info("[PUE_JOB_START] action=DELETE definitionId={}", definitionId);
+        log.info("[CALCULATED_JOB_START] action=DELETE definitionId={}", definitionId);
         PueJob job = pueJobs.remove(definitionId);
         if (job != null && job.future != null) {
             job.future.cancel(false);
         }
-        log.info("[PUE_JOB_END] action=DELETE definitionId={} removed={}", definitionId, job != null);
+        log.info("[CALCULATED_JOB_END] action=DELETE definitionId={} removed={}", definitionId, job != null);
     }
 
     public CalculatedJobStatusResponse getPueStatus(Integer definitionId) {

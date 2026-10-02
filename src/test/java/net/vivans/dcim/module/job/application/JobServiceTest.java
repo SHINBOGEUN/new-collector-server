@@ -87,7 +87,7 @@ class JobServiceTest {
         MqttPublisher mqtt = (taskId, groupId, deviceId, values) -> { };
         JobService jobService = newJobService(snmp, mqtt);
         var source = new PueCollectionSourceSpec(7, "localhost", 161, "POWER", ".1.2.3", 1D,
-                null, "A", "snmp", null, null);
+                "A", "snmp", null, null);
         jobService.upsertPue(new PueCollectionSpec(12, 3, "0 0 0 1 1 *", "public", 1000, 0,
                 List.of(source), "A"));
 

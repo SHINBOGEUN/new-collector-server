@@ -45,8 +45,8 @@ public class PahoMqttPublisher implements MqttPublisher {
     @Value("${collector.mqtt.realtime-topic:dcim/sensor/realtime}")
     private String realtimeTopic;
 
-    @Value("${collector.mqtt.pue-topic:dcim/derived/calculated}")
-    private String pueTopic;
+    @Value("${collector.mqtt.calculated-topic:dcim/derived/calculated}")
+    private String calculatedTopic;
 
     @Value("${collector.mqtt.username:}")
     private String username;
@@ -149,34 +149,6 @@ public class PahoMqttPublisher implements MqttPublisher {
         }
     }
 
-    @Override
-    public void publishPueReading(int pueDefinitionId, int configVersion, double value, double totalPower, double coolerPower) {
-        if (!enabled) {
-            log.info("[PUE_MQTT_SKIP] action=PUBLISH definitionId={} reason=CLIENT_DISABLED", pueDefinitionId);
-            return;
-        }
-        try {
-            ensureConnected();
-            if (client == null || !client.isConnected()) {
-                log.warn("[PUE_MQTT_SKIP] action=PUBLISH definitionId={} reason=NOT_CONNECTED", pueDefinitionId);
-                return;
-            }
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("datetime", LocalDateTime.now().format(DATETIME));
-            payload.put("pueDefinitionId", pueDefinitionId);
-            payload.put("configVersion", configVersion);
-            payload.put("value", value);
-            payload.put("totalPower", totalPower);
-            payload.put("coolerPower", coolerPower);
-            MqttMessage message = new MqttMessage(objectMapper.writeValueAsBytes(payload));
-            message.setQos(0);
-            client.publish(pueTopic, message);
-            log.info("[PUE_MQTT_END] action=PUBLISH definitionId={} topic={}", pueDefinitionId, pueTopic);
-        } catch (Exception exception) {
-            log.warn("[PUE_MQTT_ERROR] action=PUBLISH definitionId={} topic={} exception={} message={}",
-                    pueDefinitionId, pueTopic, exception.getClass().getSimpleName(), exception.getMessage());
-        }
-    }
 
     @Override
     public void publishCalculatedReading(int definitionId, int configVersion, double value, Map<String, Double> inputs) {
@@ -186,13 +158,13 @@ public class PahoMqttPublisher implements MqttPublisher {
             if (client == null || !client.isConnected()) throw new IllegalStateException("MQTT is not connected");
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("datetime", java.time.Instant.now().toString());
-            payload.put("pueDefinitionId", definitionId);
+            payload.put("calculatedMetricId", definitionId);
             payload.put("configVersion", configVersion);
             payload.put("value", value);
             payload.put("inputs", inputs);
             MqttMessage message = new MqttMessage(objectMapper.writeValueAsBytes(payload));
             message.setQos(1);
-            client.publish(pueTopic, message);
+            client.publish(calculatedTopic, message);
         } catch (Exception exception) {
             throw new IllegalStateException("calculated metric MQTT publish failed", exception);
         }

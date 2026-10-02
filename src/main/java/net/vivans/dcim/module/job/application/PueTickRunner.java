@@ -34,59 +34,39 @@ public class PueTickRunner {
 
     public void run(PueCollectionSpec spec, AtomicBoolean running, BiConsumer<Boolean, String> onComplete) {
         if (!running.compareAndSet(false, true)) {
-            log.debug("[CALC_COLLECT_SKIP] definitionId={} reason=ALREADY_RUNNING", spec.pueDefinitionId());
+            log.debug("[CALC_COLLECT_SKIP] definitionId={} reason=ALREADY_RUNNING", spec.calculatedMetricId());
             return;
         }
         long startedAt = System.nanoTime();
         boolean success = false;
         String failureReason = null;
         log.info("[CALC_COLLECT_START] definitionId={} sourceCount={} formula={}",
-                spec.pueDefinitionId(), spec.sources().size(), spec.formula() != null);
+                spec.calculatedMetricId(), spec.sources().size(), spec.formula() != null);
         try {
             List<CompletableFuture<Reading>> futures = spec.sources().stream()
                     .map(source -> CompletableFuture.supplyAsync(() -> read(spec, source))).toList();
             CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
                     .get(Math.max(1, spec.timeoutMs()) * Math.max(2L, (long) spec.retries() + 1L)
                             * Math.max(1L, spec.sources().size()), TimeUnit.MILLISECONDS);
-            if (spec.formula() != null && !spec.formula().isBlank()) {
-                Map<String, Double> inputs = new LinkedHashMap<>();
-                for (int i = 0; i < futures.size(); i++) {
-                    String alias = spec.sources().get(i).alias();
-                    if (alias == null || alias.isBlank() || inputs.putIfAbsent(alias, futures.get(i).join().value()) != null) {
-                        throw new IllegalArgumentException("formula source aliases must be unique and nonblank");
-                    }
+            Map<String, Double> inputs = new LinkedHashMap<>();
+            for (int i = 0; i < futures.size(); i++) {
+                String alias = spec.sources().get(i).alias();
+                if (alias == null || alias.isBlank() || inputs.putIfAbsent(alias, futures.get(i).join().value()) != null) {
+                    throw new IllegalArgumentException("formula source aliases must be unique and nonblank");
                 }
-                double calculated = FormulaExpression.evaluate(spec.formula(), inputs);
-                mqtt.publishCalculatedReading(spec.pueDefinitionId(), spec.configVersion() == null ? 1 : spec.configVersion(),
-                        calculated, inputs);
-                log.info("[CALCULATED_COLLECT_END] definitionId={} value={} sourceCount={} elapsedMs={}",
-                        spec.pueDefinitionId(), calculated, inputs.size(), elapsedMillis(startedAt));
-                success = true;
-                return;
             }
-            double total = 0D;
-            double cooler = 0D;
-            for (CompletableFuture<Reading> future : futures) {
-                Reading reading = future.join();
-                if ("total".equals(reading.role())) total += reading.value();
-                else if ("cooler".equals(reading.role())) cooler += reading.value();
-            }
-            if (cooler <= 0D) {
-                failureReason = "cooler power is zero or negative";
-                log.warn("[PUE_COLLECT_SKIP] definitionId={} reason=ZERO_COOLER_POWER totalPower={} coolerPower={}",
-                        spec.pueDefinitionId(), total, cooler);
-                return;
-            }
-            mqtt.publishPueReading(spec.pueDefinitionId(), spec.configVersion() == null ? 1 : spec.configVersion(), total / cooler, total, cooler);
-            log.info("[PUE_COLLECT_END] definitionId={} totalPower={} coolerPower={} value={} elapsedMs={}",
-                    spec.pueDefinitionId(), total, cooler, total / cooler, elapsedMillis(startedAt));
+            double calculated = FormulaExpression.evaluate(spec.formula(), inputs);
+            mqtt.publishCalculatedReading(spec.calculatedMetricId(), spec.configVersion() == null ? 1 : spec.configVersion(),
+                    calculated, inputs);
+            log.info("[CALCULATED_COLLECT_END] definitionId={} value={} sourceCount={} elapsedMs={}",
+                    spec.calculatedMetricId(), calculated, inputs.size(), elapsedMillis(startedAt));
             success = true;
         } catch (Exception exception) {
             Throwable cause = exception instanceof CompletionException && exception.getCause() != null
                     ? exception.getCause() : exception;
             failureReason = cause.getClass().getSimpleName() + ": " + cause.getMessage();
             log.warn("[CALC_COLLECT_ERROR] definitionId={} elapsedMs={} exception={} message={}",
-                    spec.pueDefinitionId(), elapsedMillis(startedAt), exception.getClass().getSimpleName(), exception.getMessage());
+                    spec.calculatedMetricId(), elapsedMillis(startedAt), exception.getClass().getSimpleName(), exception.getMessage());
         } finally {
             running.set(false);
             onComplete.accept(success, failureReason);
@@ -110,7 +90,7 @@ public class PueTickRunner {
                 if (!(raw instanceof Number number) || !Double.isFinite(number.doubleValue())) {
                     throw new IllegalStateException("missing Modbus formula source " + source.deviceId());
                 }
-                return new Reading(source.role(), number.doubleValue());
+                return new Reading(number.doubleValue());
             }
             if (!"snmp".equalsIgnoreCase(source.protocol())) {
                 throw new IllegalArgumentException("formula supports only SNMP and Modbus");
@@ -118,11 +98,11 @@ public class PueTickRunner {
             Map<String, Object> values = snmp.get(source.host(), source.port(), spec.community(), spec.timeoutMs(), spec.retries(),
                     List.of(new SnmpQueryClient.OidQuery(source.pointName(), source.oid())));
             Object raw = values.get(source.pointName());
-            if (!(raw instanceof Number number)) throw new IllegalStateException("missing PUE source " + source.deviceId());
+            if (!(raw instanceof Number number)) throw new IllegalStateException("missing calculated source " + source.deviceId());
             double value = number.doubleValue() * (source.scale() == null ? 1D : source.scale());
             if (!Double.isFinite(value)) throw new IllegalStateException("non-finite formula source " + source.deviceId());
-            return new Reading(source.role(), value);
+            return new Reading(value);
         } catch (Exception e) { throw new CompletionException(e); }
     }
-    private record Reading(String role, double value) { }
+    private record Reading(double value) { }
 }

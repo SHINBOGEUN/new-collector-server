@@ -31,9 +31,9 @@ class CalculatedTickRunnerTest {
                 ModbusDataType.FLOAT32, ModbusByteOrder.ABCD, 1D, 0D);
         var spec = new PueCollectionSpec(1, 1, "0 */5 * * * *", "public", 1000, 0, List.of(
                 new PueCollectionSourceSpec(7, "localhost", 161, "FACILITY", ".1.2.3", 1D,
-                        null, "FACILITY", "snmp", null, null),
+                        "FACILITY", "snmp", null, null),
                 new PueCollectionSourceSpec(8, "localhost", 502, "IT", null, null,
-                        null, "IT", "modbus", 1, point)), "FACILITY / IT");
+                        "IT", "modbus", 1, point)), "FACILITY / IT");
         new PueTickRunner(snmp, modbus, mqtt).run(spec, new AtomicBoolean());
         verify(mqtt).publishCalculatedReading(eq(1), eq(1), eq(2D), eq(Map.of("FACILITY", 120D, "IT", 60D)));
     }
@@ -47,7 +47,7 @@ class CalculatedTickRunnerTest {
                 .thenReturn(Map.of());
         var spec = new PueCollectionSpec(1, 1, "0 */5 * * * *", "public", 1000, 0, List.of(
                 new PueCollectionSourceSpec(7, "localhost", 161, "FACILITY", ".1.2.3", 1D,
-                        null, "FACILITY", "snmp", null, null)), "FACILITY");
+                        "FACILITY", "snmp", null, null)), "FACILITY");
         AtomicReference<Boolean> success = new AtomicReference<>();
         AtomicReference<String> reason = new AtomicReference<>();
         new PueTickRunner(snmp, modbus, mqtt).run(spec, new AtomicBoolean(), (ok, failure) -> {
@@ -56,6 +56,6 @@ class CalculatedTickRunnerTest {
         });
         verify(mqtt, never()).publishCalculatedReading(anyInt(), anyInt(), anyDouble(), anyMap());
         assertFalse(success.get());
-        assertTrue(reason.get().contains("missing PUE source"));
+        assertTrue(reason.get().contains("missing calculated source"));
     }
 }

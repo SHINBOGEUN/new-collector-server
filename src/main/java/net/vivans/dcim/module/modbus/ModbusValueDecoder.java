@@ -4,6 +4,7 @@ import net.vivans.dcim.module.job.domain.modbus.CollectionGroupModbusPointSpec;
 import net.vivans.dcim.module.job.domain.modbus.ModbusByteOrder;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 
 /** Modbus 응답 바이트를 point 설정에 따라 숫자로 변환한다. */
 public final class ModbusValueDecoder {
@@ -35,7 +36,12 @@ public final class ModbusValueDecoder {
             case UINT32 -> (double) raw;
             case FLOAT32 -> (double) Float.intBitsToFloat((int) raw);
         };
-        double scaled = Math.fma(decoded, point.effectiveScale(), point.effectiveOffset());
+        // Use decimal arithmetic for configured scale/offset so binary floating-point
+        // artifacts (for example 23.500000000000004) do not leak into MQTT/InfluxDB.
+        double scaled = BigDecimal.valueOf(decoded)
+                .multiply(BigDecimal.valueOf(point.effectiveScale()))
+                .add(BigDecimal.valueOf(point.effectiveOffset()))
+                .doubleValue();
         if (!Double.isFinite(scaled)) {
             throw new IOException("non-finite Modbus value: " + point.name());
         }

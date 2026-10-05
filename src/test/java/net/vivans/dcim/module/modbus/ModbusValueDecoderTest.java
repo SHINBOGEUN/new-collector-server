@@ -38,6 +38,15 @@ class ModbusValueDecoderTest {
     }
 
     @Test
+    void avoidsBinaryFloatingPointNoiseWhenApplyingScaleAndOffset() throws Exception {
+        var temperature = new CollectionGroupModbusPointSpec("IN-TEMP", ModbusRegisterType.INPUT, 0,
+                ModbusDataType.UINT16, null, 0.1, -50.0);
+
+        assertThat(ModbusValueDecoder.decode(temperature, new byte[]{0x02, (byte) 0xdf}).doubleValue())
+                .isEqualTo(23.5);
+    }
+
+    @Test
     void decodesBitAndRejectsNonFiniteFloat() throws Exception {
         var coil = new CollectionGroupModbusPointSpec("RUN", ModbusRegisterType.COIL, 0,
                 ModbusDataType.UINT16, null, null);

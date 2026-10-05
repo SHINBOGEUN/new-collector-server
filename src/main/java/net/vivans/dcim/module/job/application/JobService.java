@@ -278,7 +278,8 @@ public class JobService {
         if (spec.protocol() == null || spec.protocol().isBlank()) {
             throw new IllegalArgumentException("protocol이 필요합니다.");
         }
-        if (spec.targets() == null || spec.targets().isEmpty()) {
+        if ((spec.targets() == null || spec.targets().isEmpty())
+                && (spec.modbusTargets() == null || spec.modbusTargets().isEmpty())) {
             throw new IllegalArgumentException("targets가 필요합니다.");
         }
     }

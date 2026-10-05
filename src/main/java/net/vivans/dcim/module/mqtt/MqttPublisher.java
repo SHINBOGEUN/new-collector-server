@@ -26,5 +26,10 @@ public interface MqttPublisher {
             Object value
     ) {
     }
+
+    default void publishLivePoint(int deviceId, String displayName, String pointName, String unit,
+                                  Object value, String protocol, Integer sourceDeviceId) {
+        publishLivePoint(deviceId, displayName, pointName, unit, value);
+    }
 }
 

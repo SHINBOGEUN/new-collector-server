@@ -127,6 +127,12 @@ public class PahoMqttPublisher implements MqttPublisher {
             String unit,
             Object value
     ) {
+        publishLivePoint(deviceId, displayName, pointName, unit, value, "snmp", deviceId);
+    }
+
+    @Override
+    public void publishLivePoint(int deviceId, String displayName, String pointName, String unit,
+                                 Object value, String protocol, Integer sourceDeviceId) {
         if (!enabled) {
             return;
         }
@@ -137,7 +143,8 @@ public class PahoMqttPublisher implements MqttPublisher {
                 return;
             }
             byte[] body = objectMapper.writeValueAsBytes(
-                    buildLivePayload(deviceId, displayName, pointName, unit, value, LocalDateTime.now())
+                    buildLivePayload(deviceId, displayName, pointName, unit, value,
+                            LocalDateTime.now(), protocol, sourceDeviceId)
             );
             MqttMessage message = new MqttMessage(body);
             message.setQos(0);
@@ -194,6 +201,12 @@ public class PahoMqttPublisher implements MqttPublisher {
             Object value,
             LocalDateTime collectedAt
     ) {
+        return buildLivePayload(deviceId, displayName, pointName, unit, value, collectedAt, "snmp", deviceId);
+    }
+
+    static Map<String, Object> buildLivePayload(int deviceId, String displayName, String pointName,
+                                                String unit, Object value, LocalDateTime collectedAt,
+                                                String protocol, Integer sourceDeviceId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("datetime", collectedAt.format(DATETIME));
         payload.put("type", "realtime");
@@ -202,6 +215,8 @@ public class PahoMqttPublisher implements MqttPublisher {
         payload.put("unit", unit);
         payload.put("value", value);
         payload.put("displayName", displayName);
+        payload.put("protocol", protocol);
+        payload.put("sourceDeviceId", sourceDeviceId);
         return payload;
     }
 

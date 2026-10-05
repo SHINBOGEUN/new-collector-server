@@ -9,6 +9,7 @@ import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.snmp.SnmpCollectionTargetSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionTargetSpec;
+import net.vivans.dcim.module.job.domain.LiveModbusTargetSpec;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -36,7 +37,7 @@ public class CollectionTickRunner {
         thread.setDaemon(true);
         return thread;
     });
-    private final ConcurrentHashMap<Integer, AtomicBoolean> liveTargetRunning = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicBoolean> liveTargetRunning = new ConcurrentHashMap<>();
 
     public CollectionTickRunner(SnmpCollectionRunner snmpCollectionRunner,
                                 ModbusCollectionRunner modbusCollectionRunner) {
@@ -187,12 +188,15 @@ public class CollectionTickRunner {
     }
 
     private void collectLive(LiveCollectionSpec spec) {
-        if (spec.protocol() == null || !"snmp".equalsIgnoreCase(spec.protocol())) {
-            log.debug("SNMP가 아닌 live 프로토콜은 실행하지 않습니다. protocol={}", spec.protocol());
+        if (spec == null || spec.protocol() == null
+                || !("snmp".equalsIgnoreCase(spec.protocol()) || "modbus".equalsIgnoreCase(spec.protocol())
+                || "mixed".equalsIgnoreCase(spec.protocol()))) {
+            log.debug("지원하지 않는 live 프로토콜입니다. protocol={}", spec == null ? null : spec.protocol());
             return;
         }
         List<LiveCollectionTargetSpec> targets = spec.targets() == null ? List.of() : spec.targets();
-        if (targets.isEmpty()) {
+        List<LiveModbusTargetSpec> modbusTargets = spec.modbusTargets() == null ? List.of() : spec.modbusTargets();
+        if (targets.isEmpty() && modbusTargets.isEmpty()) {
             log.debug("live 수집 대상이 없습니다.");
             return;
         }
@@ -201,38 +205,41 @@ public class CollectionTickRunner {
         Semaphore semaphore = new Semaphore(concurrency);
 
         for (LiveCollectionTargetSpec target : targets) {
-            AtomicBoolean targetRunning = liveTargetRunning.computeIfAbsent(
-                    target.deviceId(),
-                    ignored -> new AtomicBoolean(false)
-            );
-            if (!targetRunning.compareAndSet(false, true)) {
-                continue;
-            }
-            executor.execute(() -> {
-                boolean acquired = false;
-                try {
-                    semaphore.acquire();
-                    acquired = true;
+            scheduleLiveTarget("snmp:" + target.deviceId() + ":" + target.host() + ":" + target.port(),
+                    semaphore, target.host(), target.port(), target.deviceId(), () -> {
                     snmpCollectionRunner.collectLiveTarget(spec, target);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                } catch (Exception ex) {
-                    log.warn(
-                            "live 수집 실패 deviceId={} host={}:{} reason={}",
-                            target.deviceId(),
-                            target.host(),
-                            target.port(),
-                            ex.getMessage()
-                    );
-                } finally {
-                    if (acquired) {
-                        semaphore.release();
-                    }
-                    targetRunning.set(false);
-                }
             });
+        }
+        for (LiveModbusTargetSpec liveTarget : modbusTargets) {
+            ModbusCollectionTargetSpec target = liveTarget.target();
+            scheduleLiveTarget("modbus:" + liveTarget.sourceDeviceId() + ":" + target.deviceId()
+                            + ":" + target.host() + ":" + target.port() + ":" + target.unitId(),
+                    semaphore, target.host(), target.port(), target.deviceId(), () -> {
+                        modbusCollectionRunner.collectLiveTarget(spec, liveTarget);
+                    });
         }
     }
 
+    private void scheduleLiveTarget(String key, Semaphore semaphore, String host, int port,
+                                    Integer deviceId, Runnable collect) {
+        AtomicBoolean targetRunning = liveTargetRunning.computeIfAbsent(key, ignored -> new AtomicBoolean(false));
+        if (!targetRunning.compareAndSet(false, true)) return;
+        executor.execute(() -> {
+            boolean acquired = false;
+            try {
+                semaphore.acquire();
+                acquired = true;
+                collect.run();
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            } catch (Exception ex) {
+                log.warn("live 수집 실패 deviceId={} host={}:{} reason={}",
+                        deviceId, host, port, ex.getMessage());
+            } finally {
+                if (acquired) semaphore.release();
+                targetRunning.set(false);
+            }
+        });
+    }
 
 }

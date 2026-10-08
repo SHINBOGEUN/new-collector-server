@@ -19,4 +19,4 @@ collector:
     topic: dcim/sensor/data
 
 app:
-  version: 1.0.0-test
+  version: 1.0.1-test

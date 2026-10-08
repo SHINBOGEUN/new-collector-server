@@ -29,7 +29,7 @@ logging:
     name: ${LOG_FILE_NAME:./logs/application.log}
 
 app:
-  version: 1.0.0
+  version: 1.0.1
 
 security:
   auth-enabled: true

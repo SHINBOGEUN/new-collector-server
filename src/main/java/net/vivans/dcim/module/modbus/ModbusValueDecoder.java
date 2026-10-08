@@ -36,6 +36,9 @@ public final class ModbusValueDecoder {
             case UINT32 -> (double) raw;
             case FLOAT32 -> (double) Float.intBitsToFloat((int) raw);
         };
+        if (!Double.isFinite(decoded)) {
+            throw new IOException("non-finite Modbus value: " + point.name());
+        }
         // Use decimal arithmetic for configured scale/offset so binary floating-point
         // artifacts (for example 23.500000000000004) do not leak into MQTT/InfluxDB.
         double scaled = BigDecimal.valueOf(decoded)

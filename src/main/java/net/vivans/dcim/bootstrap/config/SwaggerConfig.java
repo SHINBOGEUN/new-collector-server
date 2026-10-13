@@ -15,7 +15,7 @@ import java.util.List;
 @Configuration
 public class SwaggerConfig {
 
-    @Value("${app.version:1.0.1}")
+    @Value("${app.version:1.0.1-new}")
     private String projectVersion;
 
     @Bean

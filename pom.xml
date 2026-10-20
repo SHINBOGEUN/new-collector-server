@@ -10,7 +10,7 @@
     </parent>
     <groupId>net.vivans</groupId>
     <artifactId>new-collector-server</artifactId>
-    <version>1.0.2-new</version>
+    <version>1.0.3-new</version>
     <name>new-collector-server</name>
     <description>DCIM collector server — in-memory cron jobs, SNMP collect, MQTT publish</description>
 

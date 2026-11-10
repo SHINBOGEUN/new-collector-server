@@ -33,7 +33,7 @@ app:
 
 security:
   auth-enabled: true
-  api-key: ${COLLECTOR_API_KEY:manager-server}
+  api-key: ${COLLECTOR_API_KEY}
 
 management:
   endpoints:

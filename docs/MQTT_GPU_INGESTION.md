@@ -1,5 +1,7 @@
 # GPU·공통 MQTT 수집
 
+> 이 기능은 구 `new-sensor-data-server`에서 Collector의 `module.ingest`로 옮겨졌다(1.1.0-new). 설정 접두사는 `sensor.mqtt` → `ingest.mqtt`로 바뀌었다.
+
 ## 데이터 흐름
 
 GPU 에이전트 → 공통 MQTT 구독 → GPU 전용 처리 → InfluxDB.

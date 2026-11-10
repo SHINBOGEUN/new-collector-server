@@ -1,6 +1,14 @@
 # new-collector-server
 
-매니저가 내려준 수집 그룹 JSON spec을 메모리에 올리고, cron마다 장비를 병렬 SNMP 조회한 뒤 성공한 장비만 MQTT로 바로 보내는 수집 서버입니다. DB는 없습니다.
+매니저가 내려준 수집 그룹 JSON spec을 메모리에 올리고, cron마다 장비를 병렬 SNMP/Modbus 조회한 뒤 성공한 장비만 MQTT로 바로 보내는 수집 서버입니다. DB는 없습니다.
+
+1.1.0-new부터 구 `new-sensor-data-server`의 기능(MQTT 구독 → InfluxDB 저장, LoRa·GPU 에이전트 처리, 알람 측정값 보고)이 `module.ingest`로 통합되었습니다. 상세는 [docs/MQTT_GPU_INGESTION.md](docs/MQTT_GPU_INGESTION.md).
+
+```text
+SNMP/Modbus 장비 --(수집 Job)--> Collector --MQTT 발행--> Broker --구독--> Collector ingest --> InfluxDB
+LoRa(ChirpStack)·GPU 에이전트 ---------------------------> Broker --구독--> Collector ingest --> InfluxDB
+                                                     Collector ingest --(조회·알람·GPU 등록)--> Manager
+```
 
 ## 실행
 
@@ -11,10 +19,24 @@
 mvn spring-boot:run
 ```
 
-매니저 → 컬렉터 인증 헤더: `X-Api-Key: manager-server`  
-(`COLLECTOR_API_KEY`로 변경 가능)
+필수 환경변수(비어 있으면 누락 목록을 출력하고 기동을 멈춥니다):
 
-MQTT 브로커가 없으면 `MQTT_ENABLED=false`로 기동할 수 있습니다. 수집은 되지만 publish는 건너뜁니다.
+| 변수 | 용도 |
+|---|---|
+| `COLLECTOR_API_KEY` | Manager → Collector 호출 키 (`X-Api-Key`) |
+| `MANAGER_API_KEY` | Collector → Manager 호출 키 (`MANAGER_LOOKUP_ENABLED=false`면 불필요) |
+| `INFLUX_URL`, `INFLUX_TOKEN` | MQTT 수신값 저장 (`INFLUX_ENABLED=false`면 불필요) |
+
+로컬 IntelliJ 실행은 작업 폴더에 `config/application.yml`(git 제외)을 두고 위 값을 넣습니다.
+
+| 스위치 | 기본 | 설명 |
+|---|---|---|
+| `MQTT_ENABLED` | true | 수집 결과 MQTT 발행 |
+| `INGEST_ENABLED` | true | MQTT 수신 → InfluxDB 저장. 구 Sensor Data와 병행하는 전환 기간에만 false |
+| `MQTT_CLIENT_ID` / `INGEST_MQTT_CLIENT_ID` | — | 발행용/수신용 client id. 서로 달라야 함 |
+| `COLLECTOR_SCHEDULER_POOL_SIZE` | 10 | 수집 cron과 수신 측 주기 작업이 함께 쓰는 스케줄러 크기 |
+
+`GET /api/health`는 인증 없이 job 개수와 `ingestEnabled`, `ingestConnected`를 반환합니다.
 
 ## Job API
 

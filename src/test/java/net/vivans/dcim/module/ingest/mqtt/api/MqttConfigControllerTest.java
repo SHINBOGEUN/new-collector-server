@@ -20,6 +20,7 @@ class MqttConfigControllerTest {
     @MockitoBean(name = "managerRestClient") org.springframework.web.client.RestClient managerRestClient;
     @MockitoBean net.vivans.dcim.module.ingest.manager.infrastructure.AlarmMeasurementClient alarmMeasurementClient;
     @MockitoBean net.vivans.dcim.module.ingest.manager.infrastructure.GpuAgentDiscoveryClient gpuAgentDiscoveryClient;
+    @MockitoBean net.vivans.dcim.module.snmp.SnmpQueryClient snmpQueryClient;
     @MockitoBean MqttConfigurationService configuration;
     @MockitoBean net.vivans.dcim.module.ingest.lora.application.LoraConfigCache loraCache;
     @MockitoBean net.vivans.dcim.module.ingest.mqtt.infrastructure.LoraMqttSubscriber loraSubscriber;

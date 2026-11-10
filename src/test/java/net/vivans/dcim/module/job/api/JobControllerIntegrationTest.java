@@ -45,14 +45,36 @@ class JobControllerIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private org.springframework.context.ApplicationContext applicationContext;
+
     @MockitoBean
     private SnmpQueryClient snmpQueryClient;
+
+    // Manager 연동은 비활성 상태이므로 실제 HTTP 클라이언트를 생성하지 않는다.
+    @MockitoBean(name = "managerRestClient") private org.springframework.web.client.RestClient managerRestClient;
+    @MockitoBean private net.vivans.dcim.module.ingest.manager.infrastructure.AlarmMeasurementClient alarmMeasurementClient;
+    @MockitoBean private net.vivans.dcim.module.ingest.manager.infrastructure.GpuAgentDiscoveryClient gpuAgentDiscoveryClient;
+
+    @Test
+    void ingestBeansLoadWhileSubscribersAreDisabledInTestProfile() {
+        org.assertj.core.api.Assertions.assertThat(applicationContext.getBean(
+                net.vivans.dcim.module.ingest.mqtt.application.MqttConfigurationService.class)).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(applicationContext.getBean(
+                net.vivans.dcim.module.ingest.lora.application.LoraConfigCache.class)).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(applicationContext.getBean(
+                net.vivans.dcim.module.ingest.mqtt.infrastructure.LoraMqttSubscriber.class)).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(applicationContext.getBeansOfType(
+                net.vivans.dcim.module.ingest.mqtt.infrastructure.PahoMqttSubscriber.class)).isEmpty();
+    }
 
     @Test
     void healthDoesNotRequireApiKey() throws Exception {
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("UP"));
+                .andExpect(jsonPath("$.data.status").value("UP"))
+                .andExpect(jsonPath("$.data.details.ingestEnabled").value(false))
+                .andExpect(jsonPath("$.data.details.ingestConnected").value(false));
     }
 
     @Test

@@ -12,7 +12,10 @@ import net.vivans.dcim.module.job.application.JobService;
 import net.vivans.dcim.module.job.domain.CollectionGroupSpec;
 import net.vivans.dcim.module.job.domain.LiveCollectionSpec;
 import net.vivans.dcim.module.job.domain.CalculatedMetricCollectionSpec;
+import net.vivans.dcim.module.ingest.mqtt.infrastructure.PahoMqttSubscriber;
 import net.vivans.dcim.shared.api.ApiResponse;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -33,6 +36,10 @@ import java.util.Map;
 public class JobController {
 
     private final JobService jobService;
+    private final ObjectProvider<PahoMqttSubscriber> ingestSubscriber;
+
+    @Value("${ingest.mqtt.enabled:true}")
+    private boolean ingestEnabled = true;
 
     @PutMapping("/jobs/live")
     @Operation(summary = "실시간 1초 수집 job을 등록하거나 교체한다.")
@@ -109,11 +116,14 @@ public class JobController {
     }
 
     @GetMapping("/health")
-    @Operation(summary = "컬렉터 생존 확인. DB가 없으므로 job 개수만 반환한다.")
+    @Operation(summary = "컬렉터 생존 확인. 수집 job 개수와 MQTT 수신(InfluxDB 저장) 연결 상태를 반환한다.")
     public ApiResponse<HealthResponse> health() {
+        PahoMqttSubscriber subscriber = ingestSubscriber.getIfAvailable();
         return ApiResponse.ok(new HealthResponse("UP", jobService.count(), Map.of(
                 "storage", "memory",
-                "instanceId", jobService.getInstanceId()
+                "instanceId", jobService.getInstanceId(),
+                "ingestEnabled", ingestEnabled,
+                "ingestConnected", subscriber != null && subscriber.isConnected()
         )));
     }
 }

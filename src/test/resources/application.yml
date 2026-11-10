@@ -19,4 +19,19 @@ collector:
     topic: dcim/sensor/data
 
 app:
-  version: 1.0.2-new-test
+  version: test
+
+ingest:
+  mqtt:
+    enabled: false
+    broker-url: tcp://127.0.0.1:1883
+    client-id: test-collector-ingest
+
+manager:
+  service:
+    url: http://127.0.0.1:1
+    api-key: test-manager-api-key
+    enabled: false
+
+influx:
+  enabled: false

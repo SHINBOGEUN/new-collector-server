@@ -1,0 +1,1 @@
+org.springframework.boot.env.EnvironmentPostProcessor=net.vivans.dcim.shared.config.RequiredSettingsValidator

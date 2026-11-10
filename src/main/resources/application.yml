@@ -29,11 +29,12 @@ logging:
     name: ${LOG_FILE_NAME:./logs/application.log}
 
 app:
-  version: 1.0.2-new
+  version: '@project.version@'
 
 security:
   auth-enabled: true
-  api-key: ${COLLECTOR_API_KEY}
+  # Manager -> Collector 호출 키. 구 Sensor Data의 SENSOR_DATA_API_KEY 역할도 이 키로 통합했다.
+  api-key: ${COLLECTOR_API_KEY:}
 
 management:
   endpoints:
@@ -51,3 +52,36 @@ collector:
     calculated-topic: ${MQTT_CALCULATED_TOPIC:dcim/derived/calculated}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}
+  scheduler:
+    pool-size: ${COLLECTOR_SCHEDULER_POOL_SIZE:10}
+
+# ---------------------------------------------------------------------------
+# MQTT 수신 -> InfluxDB 저장 (구 new-sensor-data-server를 통합한 기능)
+# ---------------------------------------------------------------------------
+ingest:
+  mqtt:
+    # 수신 기능 전체 스위치. 구 Sensor Data 컨테이너와 병행 운영하는 전환 기간에는 false로 둔다.
+    enabled: ${INGEST_ENABLED:true}
+    broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+    # 발행 클라이언트(MQTT_CLIENT_ID)와 같은 ID를 쓰면 브로커가 서로 끊어 버리므로 반드시 다른 값을 쓴다.
+    client-id: ${INGEST_MQTT_CLIENT_ID:dcim-collector-ingest}
+    topic: ${MQTT_TOPIC:dcim/sensor/data}
+    calculated-topic: ${MQTT_CALCULATED_TOPIC:dcim/derived/calculated}
+    config-ttl-ms: ${MQTT_CONFIG_TTL_MS:60000}
+    username: ${MQTT_USERNAME:}
+    password: ${MQTT_PASSWORD:}
+
+# Collector -> Manager 조회·알람·GPU 등록 호출
+manager:
+  service:
+    url: ${MANAGER_SERVICE_URL:http://localhost:8080}
+    api-key: ${MANAGER_API_KEY:}
+    enabled: ${MANAGER_LOOKUP_ENABLED:true}
+
+influx:
+  enabled: ${INFLUX_ENABLED:true}
+  url: ${INFLUX_URL:http://localhost:8086}
+  token: ${INFLUX_TOKEN:}
+  org: ${INFLUX_ORG:vivans}
+  bucket: ${INFLUX_BUCKET:dcim}
+  measurement: ${INFLUX_MEASUREMENT:dcim_sensor}

@@ -32,3 +32,6 @@ build/
 .vscode/
 logs/
 upload/
+
+# 로컬 실행 전용 설정
+/config/

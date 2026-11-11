@@ -33,7 +33,7 @@ public class PahoMqttPublisher implements MqttPublisher {
     @Value("${collector.mqtt.enabled:true}")
     private boolean enabled;
 
-    @Value("${collector.mqtt.broker-url:tcp://localhost:1883}")
+    @Value("${collector.mqtt.broker-url}")
     private String brokerUrl;
 
     @Value("${collector.mqtt.client-id:new-collector-server}")

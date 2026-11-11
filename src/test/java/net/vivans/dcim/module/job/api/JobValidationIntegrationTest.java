@@ -27,6 +27,11 @@ class JobValidationIntegrationTest {
     @Autowired private ObjectMapper mapper;
     @MockitoBean private SnmpQueryClient snmp;
 
+    // Manager 연동은 비활성 상태이므로 실제 HTTP 클라이언트를 생성하지 않는다.
+    @MockitoBean(name = "managerRestClient") private org.springframework.web.client.RestClient managerRestClient;
+    @MockitoBean private net.vivans.dcim.module.ingest.manager.infrastructure.AlarmMeasurementClient alarmMeasurementClient;
+    @MockitoBean private net.vivans.dcim.module.ingest.manager.infrastructure.GpuAgentDiscoveryClient gpuAgentDiscoveryClient;
+
     @Test
     void invalidRegistrationCreatesNoJobAndInvalidUpdatePreservesExistingJob() throws Exception {
         for (String protocol : new String[] {"snmp", "modbus"}) {

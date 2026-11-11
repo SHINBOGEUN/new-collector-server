@@ -18,7 +18,7 @@ import java.util.List;
 @Component
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
-    @Value("${security.api-key:manager-server}")
+    @Value("${security.api-key:}")
     private String validApiKey;
 
     @Override
@@ -26,7 +26,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String apiKey = request.getHeader("X-Api-Key");
         if (apiKey != null) {
-            if (validApiKey.equals(apiKey)) {
+            if (!validApiKey.isBlank() && java.security.MessageDigest.isEqual(validApiKey.getBytes(java.nio.charset.StandardCharsets.UTF_8), apiKey.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
                 var auth = new UsernamePasswordAuthenticationToken("manager", null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(auth);
             } else {

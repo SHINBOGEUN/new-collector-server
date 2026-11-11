@@ -10,9 +10,9 @@
     </parent>
     <groupId>net.vivans</groupId>
     <artifactId>new-collector-server</artifactId>
-    <version>1.0.3-new</version>
+    <version>1.1.0-new</version>
     <name>new-collector-server</name>
-    <description>DCIM collector server — in-memory cron jobs, SNMP collect, MQTT publish</description>
+    <description>DCIM collector server — SNMP/Modbus collect, MQTT publish, MQTT ingest to InfluxDB</description>
 
     <properties>
         <java.version>17</java.version>
@@ -44,6 +44,12 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+        <dependency>
+            <!-- MQTT 수신 → InfluxDB 저장(구 new-sensor-data-server 기능) -->
+            <groupId>com.influxdb</groupId>
+            <artifactId>influxdb-client-java</artifactId>
+            <version>6.12.0</version>
         </dependency>
         <dependency>
             <groupId>org.snmp4j</groupId>

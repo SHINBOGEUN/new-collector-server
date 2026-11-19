@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class JobValidationIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper mapper;
+    @MockitoBean private net.vivans.dcim.module.ingest.manager.infrastructure.CollectionWriteGate collectionWriteGate;
     @MockitoBean private SnmpQueryClient snmp;
 
     // Manager 연동은 비활성 상태이므로 실제 HTTP 클라이언트를 생성하지 않는다.

@@ -12,3 +12,4 @@ DCIM 수집 및 수집 데이터 처리를 담당하는 서버입니다.
 - Swagger UI: [http://localhost:8081/swagger-ui.html](http://localhost:8081/swagger-ui.html) (활성화된 경우).
 - 기준 문서: [DCIM_NEW 문서](../docs/README.md).
 - [Modbus 연동 계약](MODBUS_COLLECTION_CONTRACT.md).
+- T-046: `GET /api/jobs/device-results?deviceIds=1,2` — 원본 장비별 실행 결과·연속 실패·백오프(기존 Collector API 키 인증).

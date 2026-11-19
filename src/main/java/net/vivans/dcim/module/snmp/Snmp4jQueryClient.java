@@ -71,7 +71,7 @@ public class Snmp4jQueryClient implements SnmpQueryClient {
         try {
             ResponseEvent<Address> event = snmp.send(pdu, target);
             if (event == null || event.getResponse() == null) {
-                throw new IOException("SNMP 응답이 없습니다: " + host + ":" + port);
+                throw new java.net.SocketTimeoutException("SNMP 응답이 없습니다: " + host + ":" + port);
             }
             PDU response = event.getResponse();
             if (response.getErrorStatus() != PDU.noError) {

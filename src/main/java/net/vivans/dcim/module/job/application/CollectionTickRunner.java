@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -46,146 +48,129 @@ public class CollectionTickRunner {
     }
 
     public void run(CollectionGroupSpec spec, AtomicBoolean running) {
-        run(spec, running, summary -> { });
+        run(spec, running, summary -> {});
     }
 
-    /**
-     * @param listener tick이 실제로 실행되어 완료되었을 때 결과를 통지받는다(등록된 job의
-     *                  최근 실패 시각/횟수/원인을 추적하는 용도). 미지원 프로토콜이거나 대상이 없어
-     *                  건너뛴 tick에서는 호출되지 않는다.
-     */
+    /** 기존 직접 호출은 이번 tick 완료까지 기다린다. 실제 cron은 dispatch를 사용한다. */
     public void run(CollectionGroupSpec spec, AtomicBoolean running, CollectionTickListener listener) {
-        if (!running.compareAndSet(false, true)) {
-            log.info("[COLLECT_SKIP] type=REGULAR taskId={} groupId={} reason=ALREADY_RUNNING",
-                    spec.taskId(), spec.groupId());
-            return;
-        }
-        long startedAt = System.nanoTime();
-        int targetCount = spec.targets() == null ? 0 : spec.targets().size();
-        log.info("[COLLECT_START] type=REGULAR taskId={} groupId={} targetCount={}",
-                spec.taskId(), spec.groupId(), targetCount);
+        if (!running.compareAndSet(false, true)) return;
         try {
-            CollectionTickSummary summary = collect(spec);
-            log.info("[COLLECT_END] type=REGULAR taskId={} groupId={} targetCount={} elapsedMs={}",
-                    spec.taskId(), spec.groupId(), targetCount, elapsedMillis(startedAt));
-            if (summary != null) {
-                listener.onTickCompleted(summary);
+            CompletableFuture<CollectionTickSummary> done=dispatchInternal(new CollectionJobRuntime("compat",spec),listener);
+            int count=spec.targets()==null?0:spec.targets().size();
+            long requests=1;
+            if(spec instanceof ModbusCollectionGroupSpec m && m.targets()!=null)
+                for(var target:m.targets())requests=Math.max(requests,ModbusPointResolver.resolve(m,target).size());
+            long wait=Math.min(Math.max(1,spec.timeoutMs())*4L*Math.max(1,spec.retries()+1L)*requests*Math.max(1,count),TimeUnit.HOURS.toMillis(1));
+            done.get(wait,TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {Thread.currentThread().interrupt();}
+        catch (Exception e) {log.warn("regular compatibility tick wait failed groupId={}",spec.groupId());}
+        finally {running.set(false);}
+    }
+
+    /** cron 스레드는 배분 구간만 보호한다. 다른 장비 완료를 기다리지 않는다. */
+    void dispatch(CollectionJobRuntime runtime,AtomicBoolean running,CollectionTickListener listener) {
+        if(!running.compareAndSet(false,true))return;
+        try {dispatchInternal(runtime,listener);} finally {running.set(false);}
+    }
+
+    private CompletableFuture<CollectionTickSummary> dispatchInternal(CollectionJobRuntime runtime,CollectionTickListener listener) {
+        var snapshot=runtime.snapshot();CollectionGroupSpec spec=snapshot.spec();
+        if(!snapshot.enabled())return CompletableFuture.completedFuture(null);
+        record Attempt(CollectionJobRuntime.DeviceRuntime device,List<net.vivans.dcim.module.job.domain.CollectionGroupTargetSpec> targets) {}
+        List<Attempt> attempts=new ArrayList<>();int skippedBackoff=0,skippedOverrun=0;
+        for(var entry:CollectionJobRuntime.bySource(spec).entrySet()) {
+            var state=runtime.source(entry.getKey(),snapshot.generation());if(state==null)continue;
+            var claim=state.claim(snapshot,Instant.now());
+            if(claim==CollectionJobRuntime.Claim.READY)attempts.add(new Attempt(state,entry.getValue()));
+            else if(claim==CollectionJobRuntime.Claim.BACKOFF)skippedBackoff++;else skippedOverrun++;
+        }
+        int total=attempts.stream().mapToInt(a->a.targets().size()).sum();
+        if(total==0)return CompletableFuture.completedFuture(null);
+        Tick tick=new Tick(runtime,snapshot,total,skippedBackoff,skippedOverrun,listener);
+        log.info("[COLLECT_START] type=REGULAR taskId={} groupId={} dispatched={} skippedBackoff={} skippedOverrun={}",spec.taskId(),spec.groupId(),total,skippedBackoff,skippedOverrun);
+        for(Attempt attempt:attempts){
+            DeviceBatch batch=new DeviceBatch(runtime,snapshot,attempt.device(),attempt.targets().size(),tick);
+            for(var target:attempt.targets()) {
+                Runnable work=()->{
+                    if(!runtime.current(snapshot.generation())){batch.finish(null);return;}
+                    batch.device.start();CollectionTargetResult result=new CollectionTargetResult(false,"target terminated unexpectedly",0,"ERROR");
+                    try {
+                        if(spec instanceof SnmpCollectionGroupSpec snmp && target instanceof SnmpCollectionTargetSpec t)result=snmpCollectionRunner.collectTarget(snmp,t);
+                        else if(spec instanceof ModbusCollectionGroupSpec modbus && target instanceof ModbusCollectionTargetSpec t)result=modbusCollectionRunner.collectTarget(modbus,t);
+                        else result=new CollectionTargetResult(false,"unsupported collection target",0,"ERROR");
+                        if(result==null)result=new CollectionTargetResult(false,"missing target result",0,"ERROR");
+                    }catch(Exception e){result=new CollectionTargetResult(false,e.getClass().getSimpleName(),0,CollectionFailureClassifier.classify(e));}
+                    finally {batch.finish(result);}
+                };
+                runtime.queue.add(new CollectionJobRuntime.Work(work,()->batch.finish(new CollectionTargetResult(false,"executor unavailable",0,"ERROR"))));
+            }
+        }
+        drain(runtime);return tick.done;
+    }
+
+    private void drain(CollectionJobRuntime runtime) {
+        if(!runtime.draining.compareAndSet(false,true))return;
+        try {
+            while(runtime.activeTargets.get()<runtime.concurrency()) {
+                var work=runtime.queue.poll();if(work==null)break;
+                runtime.activeTargets.incrementAndGet();
+                try {
+                    executor.execute(()->{
+                        try{work.execute().run();}
+                        finally{runtime.activeTargets.decrementAndGet();drain(runtime);}
+                    });
+                }catch(java.util.concurrent.RejectedExecutionException e){runtime.activeTargets.decrementAndGet();work.rejected().run();}
             }
         } finally {
-            running.set(false);
+            runtime.draining.set(false);
+            if(!runtime.queue.isEmpty() && runtime.activeTargets.get()<runtime.concurrency())drain(runtime);
         }
     }
 
-    private static long elapsedMillis(long startedAt) {
-        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
-    }
-
-    public void runLive(LiveCollectionSpec spec, AtomicBoolean running) {
-        collectLive(spec);
-    }
-
-    private CollectionTickSummary collect(CollectionGroupSpec spec) {
-        List<Supplier<CollectionTargetResult>> work = new ArrayList<>();
-        int maxRequestsPerTarget = 1;
-        if (spec instanceof SnmpCollectionGroupSpec snmpSpec) {
-            for (SnmpCollectionTargetSpec target : snmpSpec.targets() == null
-                    ? List.<SnmpCollectionTargetSpec>of() : snmpSpec.targets()) {
-                work.add(() -> snmpCollectionRunner.collectTarget(snmpSpec, target));
+    private static final class DeviceBatch {
+        final CollectionJobRuntime runtime;
+        final CollectionJobRuntime.Snapshot snapshot;
+        final CollectionJobRuntime.DeviceRuntime device;
+        final AtomicInteger remaining,values=new AtomicInteger(),failed=new AtomicInteger();
+        final AtomicReference<String> code=new AtomicReference<>(),reason=new AtomicReference<>();
+        final Tick tick;
+        DeviceBatch(CollectionJobRuntime runtime,CollectionJobRuntime.Snapshot snapshot,CollectionJobRuntime.DeviceRuntime device,int targets,Tick tick){
+            this.runtime=runtime;this.snapshot=snapshot;this.device=device;this.remaining=new AtomicInteger(targets);this.tick=tick;
+        }
+        void finish(CollectionTargetResult result){
+            if(result!=null){
+                values.addAndGet(Math.max(0,result.valueCount()));
+                if(!result.success()){failed.incrementAndGet();code.compareAndSet(null,result.failureCode());reason.compareAndSet(null,result.reason());}
             }
-        } else if (spec instanceof ModbusCollectionGroupSpec modbusSpec) {
-            for (ModbusCollectionTargetSpec target : modbusSpec.targets() == null
-                    ? List.<ModbusCollectionTargetSpec>of() : modbusSpec.targets()) {
-                work.add(() -> modbusCollectionRunner.collectTarget(modbusSpec, target));
-                maxRequestsPerTarget = Math.max(maxRequestsPerTarget,
-                        ModbusPointResolver.resolve(modbusSpec, target).size());
-            }
-        } else {
-            log.debug("지원하지 않는 수집 프로토콜 groupId={} protocol={}", spec.groupId(), spec.protocol());
-            return null;
+            if(remaining.decrementAndGet()==0)runtime.complete(device,snapshot,values.get(),failed.get(),code.get(),reason.get());
+            tick.finish(result);
         }
-        if (work.isEmpty()) {
-            log.debug("수집 대상이 없습니다. groupId={}", spec.groupId());
-            return null;
-        }
-
-        int concurrency = Math.max(spec.maxConcurrency(), 1);
-        Semaphore semaphore = new Semaphore(concurrency);
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        AtomicInteger successCount = new AtomicInteger();
-        AtomicInteger failureCount = new AtomicInteger();
-        AtomicReference<String> lastFailureReason = new AtomicReference<>();
-
-        for (Supplier<CollectionTargetResult> targetWork : work) {
-            futures.add(CompletableFuture.runAsync(() -> {
-                boolean acquired = false;
-                try {
-                    semaphore.acquire();
-                    acquired = true;
-                    CollectionTargetResult result = targetWork.get();
-                    if (result.success()) {
-                        successCount.incrementAndGet();
-                    } else {
-                        failureCount.incrementAndGet();
-                        lastFailureReason.set(result.reason());
-                    }
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    failureCount.incrementAndGet();
-                    lastFailureReason.set("interrupted: " + ex.getMessage());
-                } catch (Exception ex) {
-                    failureCount.incrementAndGet();
-                    lastFailureReason.set("collection error: " + ex.getMessage());
-                } finally {
-                    if (acquired) {
-                        semaphore.release();
-                    }
-                }
-            }, executor));
-        }
-
-        try {
-            long timeoutPerTarget = Math.max(spec.timeoutMs(), 1) * 4L
-                    * Math.max(spec.retries() + 1L, 1L) * maxRequestsPerTarget;
-            long waitMillis = Math.min(timeoutPerTarget * work.size(), TimeUnit.HOURS.toMillis(1));
-            CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
-                    .get(waitMillis, TimeUnit.MILLISECONDS);
-        } catch (Exception ex) {
-            log.warn(
-                    "그룹 tick 대기 중 오류 taskId={} groupId={}: {}",
-                    spec.taskId(),
-                    spec.groupId(),
-                    ex.getMessage()
-            );
-            lastFailureReason.compareAndSet(null, "tick 대기 중 오류: " + ex.getMessage());
-        }
-
-        CollectionTickSummary summary = new CollectionTickSummary(
-                work.size(), successCount.get(), failureCount.get(), lastFailureReason.get());
-        logTickSummary(spec, summary.total(), summary.success(), summary.failed());
-        return summary;
     }
 
-    private void logTickSummary(CollectionGroupSpec spec, int total, int success, int failed) {
-        if (failed > 0) {
-            log.warn(
-                    "수집 tick 요약 taskId={} groupId={} total={} success={} failed={}",
-                    spec.taskId(),
-                    spec.groupId(),
-                    total,
-                    success,
-                    failed
-            );
-            return;
+    private static final class Tick {
+        final CollectionJobRuntime runtime;
+        final CollectionJobRuntime.Snapshot snapshot;
+        final int total,skippedBackoff,skippedOverrun;
+        final AtomicInteger remaining,success=new AtomicInteger(),failed=new AtomicInteger();
+        final AtomicReference<String> reason=new AtomicReference<>();
+        final long started=System.nanoTime();
+        final CollectionTickListener listener;
+        final CompletableFuture<CollectionTickSummary> done=new CompletableFuture<>();
+        Tick(CollectionJobRuntime runtime,CollectionJobRuntime.Snapshot snapshot,int total,int skippedBackoff,int skippedOverrun,CollectionTickListener listener){
+            this.runtime=runtime;this.snapshot=snapshot;this.total=total;this.remaining=new AtomicInteger(total);this.skippedBackoff=skippedBackoff;this.skippedOverrun=skippedOverrun;this.listener=listener;
         }
-        log.info(
-                "수집 tick 요약 taskId={} groupId={} total={} success={} failed={}",
-                spec.taskId(),
-                spec.groupId(),
-                total,
-                success,
-                failed
-        );
+        void finish(CollectionTargetResult result){
+            if(result!=null){if(result.success())success.incrementAndGet();else{failed.incrementAndGet();reason.set(result.reason());}}
+            if(remaining.decrementAndGet()!=0)return;
+            CollectionTickSummary summary=new CollectionTickSummary(total,success.get(),failed.get(),reason.get());
+            try {
+                runtime.ifCurrent(snapshot.generation(),()->listener.onTickCompleted(summary));
+                log.info("[COLLECT_END] type=REGULAR taskId={} groupId={} dispatched={} skippedBackoff={} skippedOverrun={} elapsedMs={}",snapshot.spec().taskId(),snapshot.spec().groupId(),total,skippedBackoff,skippedOverrun,TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started));
+            } finally {done.complete(summary);}
+        }
     }
+
+    public void runLive(LiveCollectionSpec spec,AtomicBoolean running){collectLive(spec);}
 
     private void collectLive(LiveCollectionSpec spec) {
         if (spec == null || spec.protocol() == null

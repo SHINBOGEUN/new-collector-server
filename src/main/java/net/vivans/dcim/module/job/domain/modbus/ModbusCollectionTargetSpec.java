@@ -9,6 +9,8 @@ public record ModbusCollectionTargetSpec(
         String host,
         int port,
         Integer unitId,
-        List<CollectionGroupModbusPointSpec> points
+        List<CollectionGroupModbusPointSpec> points,
+        Integer sourceDeviceId
 ) implements CollectionGroupTargetSpec {
+    public ModbusCollectionTargetSpec(Integer deviceId,String host,int port,Integer unitId,List<CollectionGroupModbusPointSpec> points){this(deviceId,host,port,unitId,points,null);}
 }

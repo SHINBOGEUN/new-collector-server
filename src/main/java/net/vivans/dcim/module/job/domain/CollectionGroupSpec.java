@@ -21,6 +21,8 @@ public interface CollectionGroupSpec {
     Integer modelId();
     String protocol();
     String cronExpression();
+    Integer failureThreshold();
+    Integer backoffMaxSeconds();
     int timeoutMs();
     int retries();
     int maxConcurrency();

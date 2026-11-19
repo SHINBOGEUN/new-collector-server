@@ -57,7 +57,7 @@ public class SensorMqttMessageHandler {
             for (Map.Entry<String, Map<String, Object>> entry : message.data().entrySet()) {
                 int deviceId = Integer.parseInt(entry.getKey());
                 ManagerDeviceResponse device = managerDeviceClient.findDevice(deviceId).orElse(null);
-                influxWriteService.writeSensorPoints(deviceId, device, entry.getValue(), collectedAt, null, protocol);
+                influxWriteService.writeSensorPoints(deviceId, device, entry.getValue(), collectedAt, null, protocol,message.sourceDeviceId(),null,null);
                 log.info(
                         "sensor message processed deviceId={} pointCount={} type={} protocol={}",
                         deviceId,

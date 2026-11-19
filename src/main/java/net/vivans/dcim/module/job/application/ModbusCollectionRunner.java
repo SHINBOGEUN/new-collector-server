@@ -65,7 +65,7 @@ public class ModbusCollectionRunner {
     public CollectionTargetResult collectTarget(ModbusCollectionGroupSpec spec, ModbusCollectionTargetSpec target) {
         List<CollectionGroupModbusPointSpec> points = ModbusPointResolver.resolve(spec, target);
         if (points.isEmpty()) {
-            return new CollectionTargetResult(false, "deviceId=" + target.deviceId() + " has no Modbus points");
+            return new CollectionTargetResult(false, "deviceId=" + target.deviceId() + " has no Modbus points",0,"NO_POINTS");
         }
         try {
             ModbusPartialReadException partialFailure = null;
@@ -77,7 +77,7 @@ public class ModbusCollectionRunner {
                 values = exception.values();
             }
             if (!values.isEmpty()) {
-                mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), values, "modbus");
+                mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), values, "modbus",target.sourceDeviceId()==null?target.deviceId():target.sourceDeviceId());
             }
             if (partialFailure != null) {
                 collectionMetrics.recordFailure();
@@ -85,17 +85,17 @@ public class ModbusCollectionRunner {
                         + " unitId=" + target.unitId() + " " + partialFailure.getMessage();
                 log.warn("[MODBUS_COLLECT_PARTIAL] taskId={} groupId={} publishedPoints={} {}",
                         spec.taskId(), spec.groupId(), values.size(), reason);
-                return new CollectionTargetResult(false, reason);
+                return new CollectionTargetResult(false, reason, values.size(), CollectionFailureClassifier.classify(partialFailure));
             }
             collectionMetrics.recordSuccess();
-            return new CollectionTargetResult(true, null);
+            return new CollectionTargetResult(true, null, values.size(), null);
         } catch (Exception exception) {
             collectionMetrics.recordFailure();
             String reason = "deviceId=" + target.deviceId() + " host=" + target.host() + ":" + target.port()
                     + " unitId=" + target.unitId() + " "
                     + (exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage());
             log.warn("[MODBUS_COLLECT_ERROR] taskId={} groupId={} {}", spec.taskId(), spec.groupId(), reason);
-            return new CollectionTargetResult(false, reason);
+            return new CollectionTargetResult(false, reason, 0, CollectionFailureClassifier.classify(exception));
         }
     }
 }

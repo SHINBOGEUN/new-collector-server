@@ -17,6 +17,7 @@ import static org.mockito.Mockito.*;
 @AutoConfigureMockMvc
 class MqttConfigControllerTest {
     @Autowired MockMvc mvc;
+    @MockitoBean private net.vivans.dcim.module.ingest.manager.infrastructure.CollectionWriteGate collectionWriteGate;
     @MockitoBean(name = "managerRestClient") org.springframework.web.client.RestClient managerRestClient;
     @MockitoBean net.vivans.dcim.module.ingest.manager.infrastructure.AlarmMeasurementClient alarmMeasurementClient;
     @MockitoBean net.vivans.dcim.module.ingest.manager.infrastructure.GpuAgentDiscoveryClient gpuAgentDiscoveryClient;

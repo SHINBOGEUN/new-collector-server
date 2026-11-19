@@ -25,12 +25,21 @@ public class InfluxWriteService {
 
     private final InfluxProperties properties;
     private final AlarmMeasurementClient alarmClient;
+    @org.springframework.beans.factory.annotation.Autowired private net.vivans.dcim.module.ingest.manager.infrastructure.CollectionWriteGate collectionGate;
     private InfluxDBClient client;
     private WriteApiBlocking writeApi;
 
     public void writeMqttPoints(int deviceId, Integer modelId, ManagerDeviceResponse device,
             List<net.vivans.dcim.module.ingest.mqtt.domain.MqttMeasurement> values, Instant collectedAt) {
+        writeMqttPoints(deviceId,modelId,device,values,collectedAt,null,null);
+    }
+    public void writeMqttPoints(int deviceId,Integer modelId,ManagerDeviceResponse device,
+            List<net.vivans.dcim.module.ingest.mqtt.domain.MqttMeasurement> values,Instant collectedAt,String identityType,String externalId) {
         if (!properties.isEnabled() || writeApi == null || values.isEmpty()) return;
+        if(collectionGate!=null){
+            var allowed=collectionGate.allowed(deviceId,"mqtt",null,values.stream().map(net.vivans.dcim.module.ingest.mqtt.domain.MqttMeasurement::pointName).toList(),identityType,externalId);
+            values=values.stream().filter(v->allowed.contains(v.pointName())).toList();if(values.isEmpty())return;
+        }
         var points = MqttInfluxPointMapper.toPoints(properties.getMeasurement(), deviceId, modelId, device, values, collectedAt);
         if (!points.isEmpty()) writeApi.writePoints(points);
         Map<String, Double> thresholdValues = values.stream()
@@ -82,9 +91,18 @@ public class InfluxWriteService {
             String component,
             String protocol
     ) {
+        writeSensorPoints(deviceId,device,values,collectedAt,component,protocol,null,null,null);
+    }
+    public void writeSensorPoints(int deviceId,ManagerDeviceResponse device,Map<String,Object> values,Instant collectedAt,
+            String component,String protocol,Integer sourceDeviceId,String identityType,String externalId) {
         if (!properties.isEnabled() || writeApi == null) {
             log.debug("Influx write skipped (disabled) deviceId={}", deviceId);
             return;
+        }
+        if(collectionGate!=null){
+            var allowed=collectionGate.allowed(deviceId,protocol==null || protocol.isBlank()?"snmp":protocol,sourceDeviceId,new java.util.ArrayList<>(values.keySet()),identityType,externalId);
+            Map<String,Object> filtered=new java.util.LinkedHashMap<>();values.forEach((key,value)->{if(allowed.contains(key))filtered.put(key,value);});
+            if(filtered.isEmpty())return;values=filtered;
         }
         List<Point> points = SensorInfluxPointMapper.toPoints(
                 properties.getMeasurement(),

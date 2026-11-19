@@ -35,7 +35,7 @@ class ModbusCollectionRunnerTest {
         when(client.read(target, List.of(point), 2000, 1)).thenReturn(Map.of("POWER", 1250.0));
 
         assertThat(runner.collectTarget(spec, target).success()).isTrue();
-        verify(mqtt).publishSensorReading(1, 6, 101, Map.of("POWER", 1250.0), "modbus");
+        verify(mqtt).publishSensorReading(1, 6, 101, Map.of("POWER", 1250.0), "modbus", 101);
         verify(metrics).recordSuccess();
     }
 

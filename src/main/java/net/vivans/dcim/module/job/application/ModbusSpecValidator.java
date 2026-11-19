@@ -87,6 +87,7 @@ public class ModbusSpecValidator {
             throw invalid(path, "deviceId must be positive");
         }
 
+        if(target.sourceDeviceId()!=null && target.sourceDeviceId()<=0)throw invalid(path,"sourceDeviceId must be positive");
         if (target.host() == null || target.host().isBlank()) {
             throw invalid(path, "host is required");
         }

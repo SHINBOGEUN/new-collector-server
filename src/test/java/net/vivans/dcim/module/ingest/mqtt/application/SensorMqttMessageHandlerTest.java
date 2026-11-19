@@ -51,7 +51,7 @@ class SensorMqttMessageHandlerTest {
                 """));
 
         verify(influx).writeSensorPoints(eq(101), isNull(), eq(Map.of("POWER", 1250.5)),
-                any(Instant.class), isNull(), eq("modbus"));
+                any(Instant.class), isNull(), eq("modbus"), isNull(), isNull(), isNull());
     }
 
     @Test
@@ -63,7 +63,7 @@ class SensorMqttMessageHandlerTest {
                 """));
 
         verify(influx).writeSensorPoints(eq(9), isNull(), eq(Map.of("V", 219)),
-                any(Instant.class), isNull(), eq("snmp"));
+                any(Instant.class), isNull(), eq("snmp"), isNull(), isNull(), isNull());
     }
 
     @Test

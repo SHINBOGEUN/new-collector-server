@@ -11,12 +11,15 @@ public final class ModbusPartialReadException extends IOException {
     private final Map<String, Object> values;
     private final Map<String, String> failures;
 
-    public ModbusPartialReadException(Map<String, Object> values, Map<String, String> failures) {
+    public ModbusPartialReadException(Map<String, Object> values, Map<String, String> failures) { this(values, failures, null); }
+
+    public ModbusPartialReadException(Map<String, Object> values, Map<String, String> failures, Throwable cause) {
         super("Modbus point failures (" + failures.size() + "): " + failures.entrySet().stream()
                 .limit(3)
                 .map(entry -> entry.getKey() + "=" + entry.getValue())
                 .collect(Collectors.joining("; "))
                 + (failures.size() > 3 ? "; ..." : ""));
+        if(cause!=null)initCause(cause);
         this.values = Collections.unmodifiableMap(new LinkedHashMap<>(values));
         this.failures = Collections.unmodifiableMap(new LinkedHashMap<>(failures));
     }

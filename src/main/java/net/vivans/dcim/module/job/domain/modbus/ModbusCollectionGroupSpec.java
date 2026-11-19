@@ -16,8 +16,11 @@ public record ModbusCollectionGroupSpec(
         int maxConcurrency,
         List<CollectionGroupModbusPointSpec> points,
         List<ModbusCollectionTargetSpec> targets,
-        List<String> skipped
+        List<String> skipped,
+        Integer failureThreshold,
+        Integer backoffMaxSeconds
 ) implements CollectionGroupSpec {
+    public ModbusCollectionGroupSpec(Integer taskId,Integer groupId,Integer modelId,String protocol,String cronExpression,int timeoutMs,int retries,int maxConcurrency,List<CollectionGroupModbusPointSpec> points,List<ModbusCollectionTargetSpec> targets,List<String> skipped){this(taskId,groupId,modelId,protocol,cronExpression,timeoutMs,retries,maxConcurrency,points,targets,skipped,null,null);}
     public ModbusCollectionGroupSpec {
         if (!"modbus".equals(protocol)) {
             throw new IllegalArgumentException("protocol must be modbus");

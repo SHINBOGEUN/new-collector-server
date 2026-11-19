@@ -37,6 +37,8 @@ public class CollectionSpecValidator {
             throw new IllegalArgumentException("spec이 필요합니다.");
         }
 
+        if(spec.failureThreshold()!=null && (spec.failureThreshold()<1 || spec.failureThreshold()>20))throw new IllegalArgumentException("failureThreshold must be 1-20");
+        if(spec.backoffMaxSeconds()!=null && (spec.backoffMaxSeconds()<0 || spec.backoffMaxSeconds()>86400))throw new IllegalArgumentException("backoffMaxSeconds must be 0-86400");
         if (spec.groupId() == null || spec.taskId() == null) {
             throw new IllegalArgumentException("taskId와 groupId가 필요합니다.");
         }

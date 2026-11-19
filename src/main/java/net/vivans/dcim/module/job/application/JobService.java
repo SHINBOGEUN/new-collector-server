@@ -98,6 +98,7 @@ public class JobService {
         synchronized (registrationLock) {
             RegisteredJob job = requireJob(collectorJobId);
             cancel(job);
+            job.runtime.retire();
             jobs.remove(collectorJobId);
             jobIdByGroupId.remove(job.spec().groupId());
             log.info("[COLLECTOR_JOB_END] type=REGULAR action=DELETE collectorJobId={}", collectorJobId);
@@ -152,6 +153,12 @@ public class JobService {
             responses.add(toResponse(job));
         }
         return responses;
+    }
+
+    public List<net.vivans.dcim.module.job.api.dto.DeviceResultResponse> deviceResults(java.util.Collection<Integer> deviceIds) {
+        if(deviceIds!=null && (deviceIds.size()>500 || deviceIds.stream().anyMatch(id->id==null || id<=0)))throw new IllegalArgumentException("deviceIds must contain at most 500 positive ids");
+        var selected=deviceIds==null?java.util.Set.<Integer>of():java.util.Set.copyOf(deviceIds);
+        return jobs.values().stream().flatMap(j->j.runtime.results().stream()).filter(r->selected.isEmpty() || selected.contains(r.deviceId())).sorted(java.util.Comparator.comparing(net.vivans.dcim.module.job.api.dto.DeviceResultResponse::deviceId)).toList();
     }
 
     public int count() {
@@ -227,7 +234,7 @@ public class JobService {
     private void schedule(RegisteredJob job) {
         CronTrigger trigger = new CronTrigger(job.spec().cronExpression(), ZoneId.systemDefault());
         ScheduledFuture<?> future = scheduler.schedule(
-                () -> tickRunner.run(job.spec(), job.running(), job::recordTickResult),
+                () -> tickRunner.dispatch(job.runtime, job.running(), job::recordTickResult),
                 trigger
         );
         job.setFuture(future);
@@ -322,6 +329,7 @@ public class JobService {
 
     static final class RegisteredJob {
         private final String collectorJobId;
+        private final CollectionJobRuntime runtime;
         private final AtomicBoolean running = new AtomicBoolean(false);
         private volatile CollectionGroupSpec spec;
         private volatile boolean enabled;
@@ -333,6 +341,7 @@ public class JobService {
 
         RegisteredJob(String collectorJobId, CollectionGroupSpec spec, boolean enabled) {
             this.collectorJobId = collectorJobId;
+            this.runtime = new CollectionJobRuntime(collectorJobId,spec);
             this.spec = spec;
             this.enabled = enabled;
         }
@@ -359,10 +368,12 @@ public class JobService {
 
         void replaceSpec(CollectionGroupSpec spec) {
             this.spec = spec;
+            runtime.replace(spec);
         }
 
         void setEnabled(boolean enabled) {
             this.enabled = enabled;
+            runtime.setEnabled(enabled);
         }
 
         void setFuture(ScheduledFuture<?> future) {

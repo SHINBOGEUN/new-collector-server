@@ -52,8 +52,9 @@ public class SnmpCollectionRunner {
             );
             Map<String, Object> scaled = ScaledValues.apply(values, spec.oids());
             mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), scaled);
-            collectionMetrics.recordSuccess();
-            return new CollectionTargetResult(true, null);
+            boolean complete=scaled.size()>=queries.size();
+            if(complete)collectionMetrics.recordSuccess();else collectionMetrics.recordFailure();
+            return new CollectionTargetResult(complete,complete?null:"partial SNMP response",scaled.size(),complete?null:"DEVICE_ERROR");
         } catch (Exception ex) {
             collectionMetrics.recordFailure();
             String reason = "deviceId=" + target.deviceId() + " host=" + target.host() + ":" + target.port()
@@ -67,7 +68,7 @@ public class SnmpCollectionRunner {
                     target.port(),
                     ex.getMessage()
             );
-            return new CollectionTargetResult(false, reason);
+            return new CollectionTargetResult(false, reason, 0, CollectionFailureClassifier.classify(ex));
         }
     }
 

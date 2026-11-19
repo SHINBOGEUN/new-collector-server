@@ -17,8 +17,11 @@ public record SnmpCollectionGroupSpec(
         int maxConcurrency,
         List<CollectionGroupOidSpec> oids,
         List<SnmpCollectionTargetSpec> targets,
-        List<String> skipped
+        List<String> skipped,
+        Integer failureThreshold,
+        Integer backoffMaxSeconds
 ) implements CollectionGroupSpec {
+    public SnmpCollectionGroupSpec(Integer taskId,Integer groupId,Integer modelId,String protocol,String cronExpression,String community,int timeoutMs,int retries,int maxConcurrency,List<CollectionGroupOidSpec> oids,List<SnmpCollectionTargetSpec> targets,List<String> skipped){this(taskId,groupId,modelId,protocol,cronExpression,community,timeoutMs,retries,maxConcurrency,oids,targets,skipped,null,null);}
     public SnmpCollectionGroupSpec {
         if (!"snmp".equals(protocol)) {
             throw new IllegalArgumentException("protocol must be snmp");

@@ -27,6 +27,8 @@ public class ModbusTcpQueryClient implements ModbusQueryClient {
         Map<String, String> failures = new LinkedHashMap<>();
         Socket socket = null;
         int transactionId = 0;
+        boolean connectedOnce=false;
+        Throwable firstFailure=null;
         try {
             for (CollectionGroupModbusPointSpec point : points) {
                 Exception lastFailure = null;
@@ -34,6 +36,7 @@ public class ModbusTcpQueryClient implements ModbusQueryClient {
                     try {
                         if (socket == null) {
                             socket = connect(target, timeoutMs);
+                            connectedOnce=true;
                         }
                         Number value = readPoint(new DataInputStream(socket.getInputStream()),
                                 new DataOutputStream(socket.getOutputStream()), target.unitId(),
@@ -56,6 +59,11 @@ public class ModbusTcpQueryClient implements ModbusQueryClient {
                     }
                 }
                 if (lastFailure != null) {
+                    if(!connectedOnce && values.isEmpty()) {
+                        if(lastFailure instanceof IOException io)throw io;
+                        throw new IOException("Modbus connection failed",lastFailure);
+                    }
+                    if(firstFailure==null)firstFailure=lastFailure;
                     failures.put(point.name(), lastFailure.getMessage() == null
                             ? lastFailure.getClass().getSimpleName() : lastFailure.getMessage());
                 }
@@ -64,7 +72,7 @@ public class ModbusTcpQueryClient implements ModbusQueryClient {
             close(socket);
         }
         if (!failures.isEmpty()) {
-            throw new ModbusPartialReadException(values, failures);
+            throw new ModbusPartialReadException(values, failures, firstFailure);
         }
         return values;
     }

@@ -54,6 +54,12 @@ public class JobController {
         return ApiResponse.ok();
     }
 
+    @GetMapping("/jobs/device-results")
+    public ApiResponse<List<net.vivans.dcim.module.job.api.dto.DeviceResultResponse>> deviceResults(
+            @org.springframework.web.bind.annotation.RequestParam(required=false) List<Integer> deviceIds) {
+        return ApiResponse.ok(jobService.deviceResults(deviceIds));
+    }
+
     @GetMapping("/jobs/live")
     @Operation(summary = "실시간 수집 job 상태")
     public ApiResponse<JobResponse> getLive() {

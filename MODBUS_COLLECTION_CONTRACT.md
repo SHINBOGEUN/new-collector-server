@@ -92,5 +92,4 @@ Manager는 수집 그룹마다 `protocol: "modbus"`인 JSON을 생성한다. Col
 4. **통합 확인**: 동일 endpoint의 복수 Unit ID, 다른 저장 대상 장비 ID, 16/32비트 값, 통신/변환 실패, MQTT와 InfluxDB의 최종 태그를 확인한다.
 
 각 서비스의 내부 DTO와 엔티티는 해당 서비스에서 유지한다. 서비스 사이에 동일한 변환기나 MQTT serializer를 별도로 복사하지 않는다. 계약 변경 시 이 문서를 먼저 갱신하고 세 서비스의 구현을 함께 점검한다.
-
-- T-046 호환 확장: target.sourceDeviceId(선택)는 원본 수집 장비 ID입니다. deviceId는 기존처럼 저장 대상이며 sourceDeviceId가 없으면 deviceId를 원본으로 사용합니다.
+- T-046: Modbus target의 `sourceDeviceId`는 선택 원본 장비 id이며, 생략하면 기존 `deviceId`를 원본으로 사용한다(저장 대상 `deviceId` 의미 유지).

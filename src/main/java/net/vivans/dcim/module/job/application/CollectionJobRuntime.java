@@ -68,7 +68,7 @@ final class CollectionJobRuntime {
         private Long lastBackoffDelay;
         DeviceRuntime(Integer id){sourceId=id;}
         private boolean busy;
-        private Instant inFlightSince,lastAttemptAt,lastSuccessAt,lastFailureAt,backoffUntil;
+        private Instant claimedAt,inFlightSince,lastAttemptAt,lastSuccessAt,lastFailureAt,backoffUntil;
         private String lastOutcome,lastFailureCode,lastFailureReason;
         private int failures,targetCount,failedTargets,skippedBackoff,skippedOverrun;
         synchronized Claim claim(Snapshot snapshot,Instant now){
@@ -79,7 +79,7 @@ final class CollectionJobRuntime {
                 return Claim.OVERRUN;
             }
             if(backoffUntil!=null && now.plusSeconds(1).isBefore(backoffUntil)){skippedBackoff++;return Claim.BACKOFF;}
-            busy=true;return Claim.READY;
+            busy=true;claimedAt=now;return Claim.READY;
         }
         synchronized void start(){
             if(inFlightSince==null){inFlightSince=Instant.now();lastAttemptAt=inFlightSince;skippedBackoff=0;skippedOverrun=0;}
@@ -99,7 +99,7 @@ final class CollectionJobRuntime {
                 long multiplier=1L<<Math.min(30,failures-snapshot.threshold()+1);
                 long cap=Math.max(snapshot.maxBackoff(),snapshot.intervalSeconds());
                 long delay=snapshot.intervalSeconds()>cap/multiplier?cap:Math.min(snapshot.intervalSeconds()*multiplier,cap);
-                backoffUntil=(lastAttemptAt==null?now:lastAttemptAt).plusSeconds(delay);
+                backoffUntil=(claimedAt==null?now:claimedAt).plusSeconds(delay);
                 if(!Long.valueOf(delay).equals(lastBackoffDelay))log.info("[COLLECT_DEVICE_BACKOFF] groupId={} deviceId={} failures={} code={} delaySec={}",snapshot.spec().groupId(),sourceId,failures,lastFailureCode,delay);
                 lastBackoffDelay=delay;
             }

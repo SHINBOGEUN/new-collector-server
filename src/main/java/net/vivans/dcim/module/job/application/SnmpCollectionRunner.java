@@ -52,9 +52,13 @@ public class SnmpCollectionRunner {
             );
             Map<String, Object> scaled = ScaledValues.apply(values, spec.oids());
             mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), scaled);
-            boolean complete=scaled.size()>=queries.size();
-            if(complete)collectionMetrics.recordSuccess();else collectionMetrics.recordFailure();
-            return new CollectionTargetResult(complete,complete?null:"partial SNMP response",scaled.size(),complete?null:"DEVICE_ERROR");
+            // 일부 OID 미지원은 기존 job/metrics 성공 의미를 유지한다.
+            if (scaled.isEmpty()) {
+                collectionMetrics.recordFailure();
+                return new CollectionTargetResult(false, "no SNMP values", 0, "NO_POINTS");
+            }
+            collectionMetrics.recordSuccess();
+            return new CollectionTargetResult(true, null, scaled.size(), null);
         } catch (Exception ex) {
             collectionMetrics.recordFailure();
             String reason = "deviceId=" + target.deviceId() + " host=" + target.host() + ":" + target.port()

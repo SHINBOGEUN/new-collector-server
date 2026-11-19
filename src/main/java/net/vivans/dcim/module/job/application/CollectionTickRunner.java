@@ -93,14 +93,14 @@ public class CollectionTickRunner {
             for(var target:attempt.targets()) {
                 Runnable work=()->{
                     if(!runtime.current(snapshot.generation())){batch.finish(null);return;}
-                    batch.device.start();CollectionTargetResult result;
+                    batch.device.start();CollectionTargetResult result=new CollectionTargetResult(false,"target terminated unexpectedly",0,"ERROR");
                     try {
                         if(spec instanceof SnmpCollectionGroupSpec snmp && target instanceof SnmpCollectionTargetSpec t)result=snmpCollectionRunner.collectTarget(snmp,t);
                         else if(spec instanceof ModbusCollectionGroupSpec modbus && target instanceof ModbusCollectionTargetSpec t)result=modbusCollectionRunner.collectTarget(modbus,t);
                         else result=new CollectionTargetResult(false,"unsupported collection target",0,"ERROR");
                         if(result==null)result=new CollectionTargetResult(false,"missing target result",0,"ERROR");
                     }catch(Exception e){result=new CollectionTargetResult(false,e.getClass().getSimpleName(),0,CollectionFailureClassifier.classify(e));}
-                    batch.finish(result);
+                    finally {batch.finish(result);}
                 };
                 runtime.queue.add(new CollectionJobRuntime.Work(work,()->batch.finish(new CollectionTargetResult(false,"executor unavailable",0,"ERROR"))));
             }

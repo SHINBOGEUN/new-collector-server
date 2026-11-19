@@ -63,7 +63,7 @@ public class AgentMqttMessageHandler {
         }
         var device = devices.findDevice(identity.deviceId()).orElse(null);
         if (device != null && !device.enabled()) return;
-        writer.writeMqttPoints(identity.deviceId(), identity.deviceModelId(), device, measurements, time);
+        writer.writeMqttPoints(identity.deviceId(), identity.deviceModelId(), device, measurements, time,type,externalId);
     }
 }
 

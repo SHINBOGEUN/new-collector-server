@@ -123,7 +123,7 @@ public class LoraMqttMessageHandler {
 
         ManagerDeviceResponse managerDevice = managerDeviceClient.findDevice(device.deviceId()).orElse(null);
         try {
-            influxWriteService.writeSensorPoints(device.deviceId(), managerDevice, values, receivedAt, null, "mqtt");
+            influxWriteService.writeSensorPoints(device.deviceId(), managerDevice, values, receivedAt, null, "mqtt",null,identified.idType().name(),identified.externalId());
         } catch (RuntimeException exception) {
             log.warn("[LORA_MQTT_INFLUX_WRITE_FAILED] deviceId={} idType={} externalId={} exception={} message={}",
                     device.deviceId(), identified.idType(), identified.externalId(),

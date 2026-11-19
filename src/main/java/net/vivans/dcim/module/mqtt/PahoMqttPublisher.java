@@ -80,7 +80,7 @@ public class PahoMqttPublisher implements MqttPublisher {
 
     @Override
     public void publishSensorReading(int taskId, int groupId, int deviceId, Map<String, Object> values) {
-        publishRegularReading(deviceId, values, null, false);
+        publishRegularReading(deviceId, values, null, false,deviceId);
     }
 
     @Override
@@ -89,10 +89,15 @@ public class PahoMqttPublisher implements MqttPublisher {
         if (!"snmp".equals(protocol) && !"modbus".equals(protocol)) {
             throw new IllegalArgumentException("unsupported collection protocol: " + protocol);
         }
-        publishRegularReading(deviceId, values, "snmp".equals(protocol) ? null : protocol, true);
+        publishSensorReading(taskId,groupId,deviceId,values,protocol,deviceId);
     }
 
-    private void publishRegularReading(int deviceId, Map<String, Object> values, String protocol, boolean strict) {
+    @Override
+    public void publishSensorReading(int taskId,int groupId,int deviceId,Map<String,Object> values,String protocol,Integer sourceDeviceId){
+        if(!"snmp".equals(protocol) && !"modbus".equals(protocol))throw new IllegalArgumentException("unsupported collection protocol");
+        publishRegularReading(deviceId,values,"snmp".equals(protocol)?null:protocol,true,sourceDeviceId);
+    }
+    private void publishRegularReading(int deviceId, Map<String, Object> values, String protocol, boolean strict,Integer sourceDeviceId) {
         if (!enabled) {
             return;
         }
@@ -105,7 +110,9 @@ public class PahoMqttPublisher implements MqttPublisher {
                 }
                 return;
             }
-            byte[] body = objectMapper.writeValueAsBytes(buildPayload(deviceId, values, protocol, LocalDateTime.now()));
+            var payload=buildPayload(deviceId, values, protocol, LocalDateTime.now());
+            if(sourceDeviceId!=null)payload.put("sourceDeviceId",sourceDeviceId);
+            byte[] body = objectMapper.writeValueAsBytes(payload);
             MqttMessage message = new MqttMessage(body);
             message.setQos(0);
             message.setRetained(false);

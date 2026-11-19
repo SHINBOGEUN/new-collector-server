@@ -77,7 +77,7 @@ public class ModbusCollectionRunner {
                 values = exception.values();
             }
             if (!values.isEmpty()) {
-                mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), values, "modbus");
+                mqttPublisher.publishSensorReading(spec.taskId(), spec.groupId(), target.deviceId(), values, "modbus",target.sourceDeviceId()==null?target.deviceId():target.sourceDeviceId());
             }
             if (partialFailure != null) {
                 collectionMetrics.recordFailure();

@@ -7,8 +7,10 @@ public record SensorMqttPayload(
         String datetime,
         Map<String, Map<String, Object>> data,
         String type,
-        String protocol
+        String protocol,
+        Integer sourceDeviceId
 ) {
+    public SensorMqttPayload(String datetime,Map<String,Map<String,Object>> data,String type,String protocol){this(datetime,data,type,protocol,null);}
     /** 과거 정기 수집 메시지에는 protocol 필드가 없으므로 SNMP로만 기본 처리한다. */
     public String resolvedProtocol() {
         if (protocol == null) {

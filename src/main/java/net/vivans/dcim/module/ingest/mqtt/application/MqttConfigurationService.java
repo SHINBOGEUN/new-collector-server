@@ -50,7 +50,7 @@ public class MqttConfigurationService {
         if (Instant.now().isAfter(snapshot.expiresAt())) refresh();
         var key = new Key(type, normalize(type, externalId));
         Instant missingUntil = missingIdentities.get(key);
-        if (missingUntil != null && Instant.now().isBefore(missingUntil)) return Optional.empty();
+        // OFF 뒤 ON 전환은 다음 메시지에서 다시 조회한다. 음성 캐시로 재개를 늦추지 않는다.
         var identity = snapshot.identities().get(key);
         if (identity == null) identity = client.resolve(type, externalId).orElse(null);
         if (identity == null || !identity.enabled() || identity.deviceId() == null || identity.deviceModelId() == null) {

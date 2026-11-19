@@ -17,8 +17,8 @@ public record ModbusCollectionGroupSpec(
         List<CollectionGroupModbusPointSpec> points,
         List<ModbusCollectionTargetSpec> targets,
         List<String> skipped,
-        Integer failureThreshold,
-        Integer backoffMaxSeconds
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Integer failureThreshold,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Integer backoffMaxSeconds
 ) implements CollectionGroupSpec {
     public ModbusCollectionGroupSpec(Integer taskId,Integer groupId,Integer modelId,String protocol,String cronExpression,int timeoutMs,int retries,int maxConcurrency,List<CollectionGroupModbusPointSpec> points,List<ModbusCollectionTargetSpec> targets,List<String> skipped){this(taskId,groupId,modelId,protocol,cronExpression,timeoutMs,retries,maxConcurrency,points,targets,skipped,null,null);}
     public ModbusCollectionGroupSpec {

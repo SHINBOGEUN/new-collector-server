@@ -18,8 +18,8 @@ public record SnmpCollectionGroupSpec(
         List<CollectionGroupOidSpec> oids,
         List<SnmpCollectionTargetSpec> targets,
         List<String> skipped,
-        Integer failureThreshold,
-        Integer backoffMaxSeconds
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Integer failureThreshold,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Integer backoffMaxSeconds
 ) implements CollectionGroupSpec {
     public SnmpCollectionGroupSpec(Integer taskId,Integer groupId,Integer modelId,String protocol,String cronExpression,String community,int timeoutMs,int retries,int maxConcurrency,List<CollectionGroupOidSpec> oids,List<SnmpCollectionTargetSpec> targets,List<String> skipped){this(taskId,groupId,modelId,protocol,cronExpression,community,timeoutMs,retries,maxConcurrency,oids,targets,skipped,null,null);}
     public SnmpCollectionGroupSpec {

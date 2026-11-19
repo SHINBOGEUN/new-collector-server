@@ -50,7 +50,7 @@ class AgentMqttMessageHandlerTest {
         verify(writer).writeMqttPoints(40, 8, null, List.of(
                 new MqttMeasurement("load_avg_1min", 0.01, null, null, null),
                 new MqttMeasurement("gpu_temperature", 59, "GPU", "0", "GPU-AAA")),
-                Instant.parse("2026-10-14T08:11:13.545533Z"));
+                Instant.parse("2026-10-14T08:11:13.545533Z"), "MAC", "aabbccddeeff");
     }
 
     @Test

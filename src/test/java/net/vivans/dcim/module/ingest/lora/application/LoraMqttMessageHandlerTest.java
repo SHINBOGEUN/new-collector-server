@@ -87,7 +87,7 @@ class LoraMqttMessageHandlerTest {
         verify(configCache, never()).resolveDevice(eq(LoraIdType.DEVICE_NAME), any());
 
         ArgumentCaptor<Map<String, Object>> valuesCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(influxWriteService).writeSensorPoints(eq(9), any(), valuesCaptor.capture(), any(), isNull(), eq("mqtt"));
+        verify(influxWriteService).writeSensorPoints(eq(9), any(), valuesCaptor.capture(), any(), isNull(), eq("mqtt"), isNull(), eq("DEV_EUI"), eq("24E124710C123456"));
         assertThat(valuesCaptor.getValue()).containsEntry("TEMPERATURE", 23.5);
 
         LoraRuntimeStatusCache.Snapshot snapshot = runtimeStatusCache.snapshotOf(9);
@@ -114,7 +114,7 @@ class LoraMqttMessageHandlerTest {
 
         verify(configCache, never()).resolveDevice(eq(LoraIdType.DEV_EUI), any());
         verify(configCache).resolveDevice(LoraIdType.DEVICE_NAME, "dragino-lht65n-01");
-        verify(influxWriteService).writeSensorPoints(eq(11), any(), any(), any(), isNull(), eq("mqtt"));
+        verify(influxWriteService).writeSensorPoints(eq(11), any(), any(), any(), isNull(), eq("mqtt"), isNull(), eq("DEVICE_NAME"), eq("dragino-lht65n-01"));
         assertThat(runtimeStatusCache.snapshotOf(11).lastSavedAt()).isNotNull();
     }
 
@@ -137,7 +137,7 @@ class LoraMqttMessageHandlerTest {
         assertThat(snapshot.lastReceivedAt()).isNotNull();
         assertThat(snapshot.lastErrorCode()).isEqualTo("NO_MAPPING");
         assertThat(snapshot.lastSavedAt()).isNull();
-        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any());
+        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -147,7 +147,7 @@ class LoraMqttMessageHandlerTest {
         handler.handle("application/unknown/event/up", payload);
 
         verify(configCache, never()).resolveDevice(any(), any());
-        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any());
+        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any(), any(), any(), any());
         // 식별 자체에 실패해 특정 device로 귀속시킬 수 없으므로 런타임 캐시에는 아무것도 쌓이지 않는다.
         assertThat(runtimeStatusCache.snapshotAll()).isEmpty();
     }
@@ -164,7 +164,7 @@ class LoraMqttMessageHandlerTest {
 
         verify(configCache).resolveDevice(LoraIdType.DEV_EUI, "24E124710C123456");
         verify(configCache, never()).resolveDevice(eq(LoraIdType.DEVICE_NAME), any());
-        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any());
+        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any(), any(), any(), any());
         // 미등록 장비는 runtime cache에 절대 기록되지 않는다.
         assertThat(runtimeStatusCache.snapshotAll()).isEmpty();
     }
@@ -183,7 +183,7 @@ class LoraMqttMessageHandlerTest {
         LoraRuntimeStatusCache.Snapshot snapshot = runtimeStatusCache.snapshotOf(20);
         assertThat(snapshot.lastErrorCode()).isEqualTo("NO_MAPPING");
         assertThat(snapshot.lastSavedAt()).isNull();
-        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any());
+        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -201,7 +201,7 @@ class LoraMqttMessageHandlerTest {
         handler.handle("application/dev6/event/up", payload);
 
         // sentinel(no-data)는 오류가 아니다. 다만 유효 포인트가 하나도 없으므로 Influx 기록도 없다.
-        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any());
+        verify(influxWriteService, never()).writeSensorPoints(anyInt(), any(), any(), any(), any(), any(), any(), any(), any());
         LoraRuntimeStatusCache.Snapshot snapshot = runtimeStatusCache.snapshotOf(30);
         assertThat(snapshot.lastReceivedAt()).isNotNull();
         assertThat(snapshot.lastErrorCode()).isNull();
@@ -222,7 +222,7 @@ class LoraMqttMessageHandlerTest {
         when(managerDeviceClient.findDevice(40)).thenReturn(Optional.empty());
         RuntimeException influxFailure = new RuntimeException("influx unavailable");
         doThrow(influxFailure).when(influxWriteService)
-                .writeSensorPoints(eq(40), any(), any(), any(), isNull(), eq("mqtt"));
+                .writeSensorPoints(eq(40), any(), any(), any(), isNull(), eq("mqtt"), isNull(), eq("DEV_EUI"), eq("AABBCCDDEEFF0044"));
 
         RuntimeException thrown = assertThrows(RuntimeException.class,
                 () -> handler.handle("application/dev7/event/up", payload));
@@ -253,7 +253,7 @@ class LoraMqttMessageHandlerTest {
         handler.handle("application/dev8/event/up", payload);
 
         ArgumentCaptor<Map<String, Object>> valuesCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(influxWriteService).writeSensorPoints(eq(50), any(), valuesCaptor.capture(), any(), isNull(), eq("mqtt"));
+        verify(influxWriteService).writeSensorPoints(eq(50), any(), valuesCaptor.capture(), any(), isNull(), eq("mqtt"), isNull(), eq("DEV_EUI"), eq("AABBCCDDEEFF0050"));
         assertThat(valuesCaptor.getValue()).containsOnlyKeys("TEMPERATURE");
 
         LoraRuntimeStatusCache.Snapshot snapshot = runtimeStatusCache.snapshotOf(50);
@@ -275,7 +275,7 @@ class LoraMqttMessageHandlerTest {
         // 1차: Influx 저장 실패로 오류 상태가 기록된다.
         RuntimeException influxFailure = new RuntimeException("influx unavailable");
         doThrow(influxFailure).when(influxWriteService)
-                .writeSensorPoints(eq(60), any(), any(), any(), isNull(), eq("mqtt"));
+                .writeSensorPoints(eq(60), any(), any(), any(), isNull(), eq("mqtt"), isNull(), eq("DEV_EUI"), eq("AABBCCDDEEFF0060"));
         byte[] payload = ("{\"deviceInfo\":{\"devEui\":\"AABBCCDDEEFF0060\"},"
                 + "\"object\":{\"TempC_SHT\":23.5}}").getBytes(StandardCharsets.UTF_8);
         assertThrows(RuntimeException.class, () -> handler.handle("application/dev9/event/up", payload));

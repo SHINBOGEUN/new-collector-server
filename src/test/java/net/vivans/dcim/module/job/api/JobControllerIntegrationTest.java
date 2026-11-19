@@ -48,6 +48,7 @@ class JobControllerIntegrationTest {
     @Autowired
     private org.springframework.context.ApplicationContext applicationContext;
 
+    @MockitoBean private net.vivans.dcim.module.ingest.manager.infrastructure.CollectionWriteGate collectionWriteGate;
     @MockitoBean
     private SnmpQueryClient snmpQueryClient;
 
